@@ -35,6 +35,7 @@ dependencies {
   implementation libs.kotlinx.coroutines.core
   implementation libs.okhttp
   implementation libs.timber
+  implementation libs.koin.androidx.compose
   implementation 'wang.harlon.quickjs:wrapper-android:2.4.0'
   testImplementation libs.junit
   testImplementation libs.kotlinx.coroutines.core
