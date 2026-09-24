@@ -3,13 +3,12 @@ plugins {
 }
 
 android {
-  namespace = 'me.spica27.spicamusic.feature.library.domain'
+  namespace = 'me.spica27.spicamusic.online'
   compileSdk = 37
 
   defaultConfig {
     minSdk = 29
     targetSdk = 36
-
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     consumerProguardFiles "consumer-rules.pro"
   }
@@ -25,11 +24,18 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
 }
 
 dependencies {
   implementation project(':common')
-  implementation project(':feature-library-data')
-  implementation libs.koin.androidx.compose
+  implementation libs.kotlinx.coroutines.core
+  implementation libs.okhttp
+  implementation libs.timber
+  implementation 'wang.harlon.quickjs:wrapper-android:2.4.0'
   testImplementation libs.junit
+  testImplementation libs.kotlinx.coroutines.core
 }

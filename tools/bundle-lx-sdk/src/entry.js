@@ -1,6 +1,6 @@
 // 打包入口：安装运行时垫片，加载落雪内置音源，并把它们暴露为统一的原生可调用接口。
 import { installBuffer } from './runtime/buffer.js'
-import { log } from './runtime/native.js'
+import { log, nativeCall } from './runtime/native.js'
 import sdk from '../../../third_party/lx-music/musicSdk/index.js'
 
 installBuffer()
@@ -69,6 +69,32 @@ const host = {
     const source = sdk[sourceId]
     if (!source || !source.getPic) return null
     return source.getPic(songInfo)
+  },
+
+  // ---- 供原生按 requestId 调用的入口：结果通过原生桥回传，避免依赖 Promise 的跨语言返回 ----
+
+  async runSearchSource(requestId, platformId, keyword, limit = 25) {
+    try {
+      const result = await host.search(platformId, keyword, 1, limit)
+      nativeCall('searchResult', {
+        requestId,
+        platform: platformId,
+        data: JSON.stringify({ list: (result && result.list) || [], total: (result && result.total) || 0 }),
+      })
+    } catch (err) {
+      nativeCall('searchResult', { requestId, platform: platformId, error: (err && err.message) || String(err) })
+    }
+  },
+
+  async runDetail(requestId, platformId, songInfoJson) {
+    try {
+      const songInfo = JSON.parse(songInfoJson)
+      const source = sdk[platformId]
+      const detail = source && source.getMusicInfo ? await source.getMusicInfo(songInfo) : null
+      nativeCall('detailResult', { requestId, data: JSON.stringify(detail || {}) })
+    } catch (err) {
+      nativeCall('detailResult', { requestId, error: (err && err.message) || String(err) })
+    }
   },
 
   detailPageUrl(sourceId, songInfo) {
