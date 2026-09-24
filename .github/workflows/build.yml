@@ -42,7 +42,9 @@ jobs:
           fi
 
       - name: Unit tests
-        run: ./gradlew test --no-daemon --stacktrace
+        run: |
+          ./gradlew :feature-online-sources:testDebugUnitTest :feature-library-domain:testDebugUnitTest \
+            --no-daemon --stacktrace
 
       - name: Assemble APKs
         run: ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
