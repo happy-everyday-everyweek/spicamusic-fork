@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -122,7 +123,16 @@ fun AnimatedCursorTextField(
     LaunchedEffect(textLayout, selection, focused) {
         val layout = textLayout
         if (layout != null && focused && selection.collapsed) {
-            val rect = layout.getCursorRect(selection.start)
+            // TextFieldState 的选择区与最近一次布局结果可能瞬时不同步（输入法组词、外部
+            // setText、布局回调滞后），直接把 selection 交给 getCursorRect 会越界崩溃。
+            // 这里按最近一次布局的文本长度夹紧；布局文本为空时退回行首，光标仍然可见。
+            val textLength = layout.layoutInput.text.length
+            val rect =
+                if (textLength == 0) {
+                    Rect(0f, 0f, 0f, layout.size.height.toFloat())
+                } else {
+                    layout.getCursorRect(selection.start.coerceIn(0, textLength))
+                }
             cursorHeight = rect.height
             if (!cursorVisible) {
                 // 首次出现：直接落位，不从 (0,0) 滑入。
