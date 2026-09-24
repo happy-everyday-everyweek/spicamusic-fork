@@ -76,8 +76,15 @@ class LxNativeBridge(
     "gunzip" -> GZIPInputStream(data.inputStream()).use { it.readBytes() }
     "deflateRaw" -> {
       val output = ByteArrayOutputStream()
-      val deflater = java.util.zip.Deflater(true)
-      java.util.zip.DeflaterOutputStream(output, deflater).use { stream -> stream.write(data) }
+      val deflater = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true)
+      deflater.setInput(data)
+      deflater.finish()
+      val buffer = ByteArray(16 * 1024)
+      while (!deflater.finished()) {
+        val count = deflater.deflate(buffer)
+        if (count <= 0) break
+        output.write(buffer, 0, count)
+      }
       deflater.end()
       output.toByteArray()
     }
