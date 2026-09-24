@@ -210,6 +210,23 @@ fun SettingsScreen() {
                 }
             }
 
+            item(key = "settings_online_download") {
+                OnlineDownloadSettingsCard(
+                    modifier = Modifier.entrance(order = 6, play = !entrancePlayed),
+                )
+            }
+
+            item(key = "settings_scan_scope") {
+                ScanScopeSettingsCard(
+                    whitelistPaths = emptyList(),
+                    onAddDirectory = {},
+                    onRemoveDirectory = {},
+                    onMigrate = {},
+                    migrationStatus = null,
+                    modifier = Modifier.entrance(order = 7, play = !entrancePlayed),
+                )
+            }
+
             item(key = "settings_now_playing") {
                 val backgroundOptions = rememberBackgroundOptions()
                 val coverTapOptions = rememberCoverTapOptions()
