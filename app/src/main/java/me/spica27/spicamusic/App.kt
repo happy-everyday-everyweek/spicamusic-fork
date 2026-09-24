@@ -23,7 +23,6 @@ import me.spica27.spicamusic.feature.settings.domain.settingsDomainModule
 import me.spica27.spicamusic.player.api.IMusicPlayer
 import me.spica27.spicamusic.player.impl.SpicaPlayer
 import me.spica27.spicamusic.service.PlaybackService
-import me.spica27.spicamusic.online.di.onlineModule
 import me.spica27.spicamusic.storage.impl.di.storageModule
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
@@ -67,7 +66,6 @@ class App : Application() {
                 playerDomainModule,
                 settingsDomainModule,
                 lyricsDomainModule,
-                onlineModule,
                 AppModule.appModule, // 应用模块
                 extraInfoModule,
             )
