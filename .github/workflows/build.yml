@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Bundle LX music SDK
+        run: |
+          if [ -f tools/bundle-lx-sdk/build.sh ]; then
+            bash tools/bundle-lx-sdk/build.sh
+          else
+            echo "LX music SDK bundler not present yet, skipping"
+          fi
+
+      - name: Unit tests
+        run: ./gradlew test --no-daemon --stacktrace
+
+      - name: Assemble APKs
+        run: ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk -name "*.apk" -exec cp {} out/ \;
+          ls -l out
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: spicamusic-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: spicamusic-apk
+          path: out
+
+      - name: Rename APK for release
+        run: |
+          cd out
+          for f in *.apk; do
+            cp "$f" "spicamusic-${GITHUB_REF_NAME}-${f}"
+          done
+          ls -l
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/spicamusic-*.apk
+          generate_release_notes: true
