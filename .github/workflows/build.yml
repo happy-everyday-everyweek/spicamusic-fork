@@ -53,13 +53,16 @@ jobs:
         run: |
           mkdir -p out
           find app/build/outputs/apk -name "*.apk" -exec cp {} out/ \;
+          find app/build/outputs -name "mapping.txt" -exec cp {} out/ \;
           ls -l out
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: spicamusic-apk
-          path: out/*.apk
+          path: |
+            out/*.apk
+            out/mapping.txt
           if-no-files-found: error
 
   release:
