@@ -33,4 +33,17 @@ export const gunzip = (data, callback) => {
     .catch((err) => callback(err))
 }
 
-export default { inflate, inflateRaw, deflateRaw, gunzip }
+export const constants = {
+  Z_NO_FLUSH: 0,
+  Z_PARTIAL_FLUSH: 1,
+  Z_SYNC_FLUSH: 2,
+  Z_FULL_FLUSH: 3,
+  Z_FINISH: 4,
+  Z_OK: 0,
+  Z_STREAM_END: 1,
+  Z_DEFAULT_COMPRESSION: -1,
+  Z_BEST_SPEED: 1,
+  Z_BEST_COMPRESSION: 9,
+}
+
+export default { inflate, inflateRaw, deflateRaw, gunzip, constants }

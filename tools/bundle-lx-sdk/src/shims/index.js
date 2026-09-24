@@ -3,6 +3,21 @@
 import CryptoJS from 'crypto-js'
 import { decodeName } from './lyric-util.js'
 
+export const dateFormat = (time, format = 'Y-M-D h:m:s') => {
+  const date = new Date(time)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value) => String(value).padStart(2, '0')
+  const map = {
+    Y: String(date.getFullYear()),
+    M: pad(date.getMonth() + 1),
+    D: pad(date.getDate()),
+    h: pad(date.getHours()),
+    m: pad(date.getMinutes()),
+    s: pad(date.getSeconds()),
+  }
+  return format.replace(/Y|M|D|h|m|s/g, (token) => map[token])
+}
+
 export const formatPlayCount = (num) => {
   if (num > 100000000) return `${Math.trunc(num / 10000000) / 10}亿`
   if (num > 10000) return `${Math.trunc(num / 1000) / 10}万`
