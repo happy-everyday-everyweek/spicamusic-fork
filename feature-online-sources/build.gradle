@@ -32,6 +32,7 @@ android {
 
 dependencies {
   implementation project(':common')
+  implementation project(':feature-library-domain')
   implementation libs.kotlinx.coroutines.core
   implementation libs.okhttp
   implementation libs.timber

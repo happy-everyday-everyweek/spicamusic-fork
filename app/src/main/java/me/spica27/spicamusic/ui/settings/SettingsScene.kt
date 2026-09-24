@@ -218,11 +218,6 @@ fun SettingsScreen() {
 
             item(key = "settings_scan_scope") {
                 ScanScopeSettingsCard(
-                    whitelistPaths = emptyList(),
-                    onAddDirectory = {},
-                    onRemoveDirectory = {},
-                    onMigrate = {},
-                    migrationStatus = null,
                     modifier = Modifier.entrance(order = 7, play = !entrancePlayed),
                 )
             }
