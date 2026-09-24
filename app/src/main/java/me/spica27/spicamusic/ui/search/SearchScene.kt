@@ -134,6 +134,7 @@ fun SearchScreen() {
     val searchViewModel = koinViewModel<SearchViewModel>()
     val searchKey by searchViewModel.searchKeyword.collectAsStateWithLifecycle()
     val searchResult = searchViewModel.searchPagingResults.collectAsLazyPagingItems()
+    val onlineState by searchViewModel.onlineState.collectAsStateWithLifecycle()
     val playerViewModel = LocalPlayerViewModel.current
     val currentMediaItem by playerViewModel.currentMediaItem.collectAsStateWithLifecycle()
 
@@ -233,21 +234,38 @@ fun SearchScreen() {
                         SearchSkeletonList(modifier = Modifier.fillMaxSize())
 
                     SearchContentState.Empty ->
-                        SearchNoResultHint(
-                            query = searchKey,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            SearchNoResultHint(
+                                query = searchKey,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            OnlineResultsSection(
+                                state = onlineState,
+                                progressOf = { track -> searchViewModel.onlineProgress(track) },
+                                onTrackClick = { track -> searchViewModel.downloadOnline(track) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
 
                     SearchContentState.Results ->
-                        SearchResultList(
-                            listState = listState,
-                            searchResult = searchResult,
-                            keyword = searchKey,
-                            playingMediaId = currentMediaItem?.mediaId,
-                            onPlay = { song -> playerViewModel.playSong(song) },
-                            onMore = { song -> backStack.add(SongMenuRoute(song)) },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            SearchResultList(
+                                listState = listState,
+                                searchResult = searchResult,
+                                keyword = searchKey,
+                                playingMediaId = currentMediaItem?.mediaId,
+                                onPlay = { song -> playerViewModel.playSong(song) },
+                                onMore = { song -> backStack.add(SongMenuRoute(song)) },
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                            )
+                            OnlineSearchMoreRow(onClick = { searchViewModel.searchOnlineMore() })
+                            OnlineResultsSection(
+                                state = onlineState,
+                                progressOf = { track -> searchViewModel.onlineProgress(track) },
+                                onTrackClick = { track -> searchViewModel.downloadOnline(track) },
+                                modifier = Modifier.weight(0.7f),
+                            )
+                        }
                 }
             }
         }
