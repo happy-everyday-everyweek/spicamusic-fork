@@ -11,7 +11,6 @@ import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.util.concurrent.TimeUnit
-import java.util.zip.DeflaterOutputStream
 import java.util.zip.GZIPInputStream
 import java.util.zip.Inflater
 import javax.crypto.Cipher
@@ -75,13 +74,13 @@ class LxNativeBridge(
     "inflate" -> inflate(data, raw = false)
     "inflateRaw" -> inflate(data, raw = true)
     "gunzip" -> GZIPInputStream(data.inputStream()).use { it.readBytes() }
-    "deflateRaw" -> ByteArrayOutputStream().also { output ->
-      object : DeflaterOutputStream(output, java.util.zip.Deflater(true)) {
-        init {
-          use { it.write(data) }
-        }
-      }
-    }.toByteArray()
+    "deflateRaw" -> {
+      val output = ByteArrayOutputStream()
+      val deflater = java.util.zip.Deflater(true)
+      java.util.zip.DeflaterOutputStream(output, deflater).use { stream -> stream.write(data) }
+      deflater.end()
+      output.toByteArray()
+    }
     else -> throw IllegalArgumentException("不支持的 zlib 操作: $kind")
   }
 
