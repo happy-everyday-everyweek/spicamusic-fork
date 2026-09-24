@@ -1,0 +1,244 @@
+plugins {
+  alias(libs.plugins.android.application)
+  id 'org.jetbrains.kotlin.plugin.parcelize'
+  id 'com.google.devtools.ksp'
+  alias(libs.plugins.jetbrains.kotlin.serialization)
+  alias(libs.plugins.compose.compiler)
+  id "org.jlleitschuh.gradle.ktlint" version "14.2.0"
+  alias(libs.plugins.stability.analyzer)
+  alias(libs.plugins.androidx.baselineprofile)
+}
+
+def majorVersion = providers.gradleProperty("MAJOR_VERSION").get().toInteger()
+def minorVersion = providers.gradleProperty("MINOR_VERSION").get().toInteger()
+def buildVersion = providers.gradleProperty("BUILD_VERSION").get().toInteger()
+def appVersionCode = majorVersion * 1_000_000 + minorVersion * 10_000 + buildVersion
+def appVersionName = "$majorVersion.$minorVersion.$buildVersion PRE"
+
+println("buildVersionCode = $appVersionCode")
+println("buildVersionName = $appVersionName")
+
+android {
+  namespace = 'me.spica27.spicamusic'
+  compileSdk = 37
+
+  defaultConfig {
+    applicationId = "me.spica27.spicamusic"
+    minSdk = 29
+    targetSdk = 37
+    versionCode = appVersionCode
+    versionName = appVersionName
+
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    vectorDrawables {
+      useSupportLibrary = true
+    }
+    ndk {
+      //armeabi armeabi-v7a arm64-v8a x86 x86_64
+      abiFilters 'arm64-v8a'
+    }
+  }
+
+  signingConfigs {
+    signingConfig {
+      storeFile = rootProject.file("key.jks")
+      storePassword = 'SPICa27'
+      keyAlias = 'wuqi'
+      keyPassword = 'SPICa27'
+    }
+  }
+
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
+  }
+
+  buildTypes {
+    release {
+      optimization.enable = true
+      minifyEnabled = true
+      shrinkResources = true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+      signingConfig = signingConfigs.signingConfig
+    }
+    debug {
+      minifyEnabled = false
+      signingConfig = signingConfigs.signingConfig
+    }
+  }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+  }
+  buildFeatures {
+    compose = true
+    buildConfig = true
+  }
+  sourceSets {
+    main {
+      jniLibs.srcDirs = ['libs']
+    }
+  }
+  //  kapt {
+  //    correctErrorTypes = true
+  //  }
+  packaging {
+    resources {
+      it.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+    jniLibs {
+      useLegacyPackaging = true
+    }
+  }
+}
+
+composeCompiler {
+  // Generate Compose Compiler stability reports for Phase 2 diagnosis
+  reportsDestination = layout.buildDirectory.dir("compose_metrics")
+
+  // Enable Strong Skipping mode (default in Kotlin 2.0.20+, but explicit is better)
+  enableStrongSkippingMode = true
+
+  // Treat all interfaces as stable (uncomment after adding stabilityConfigurationFile if needed)
+  // stabilityConfigurationFile = rootProject.file("compose_compiler_config.conf")
+}
+
+//build.gradle
+ktlint {
+  android = true // Enable Android-specific linting rules
+  ignoreFailures = true // Fail the build if KtLint finds any issues
+}
+
+tasks.named("preBuild") {
+  dependsOn("ktlintFormat")
+}
+
+dependencies {
+  // 模块依赖
+  implementation project(':common')
+  implementation project(':core-preferences')
+  implementation project(':feature-library-data')
+  implementation project(':feature-player-data')
+  implementation project(':feature-lyrics-data')
+  implementation project(':feature-library-domain')
+  implementation project(':feature-player-domain')
+  implementation project(':feature-settings-domain')
+  implementation project(':feature-lyrics-domain')
+  implementation fileTree(dir: "libs", include: ["*.jar", "*.aar"])
+  implementation libs.androidx.core.ktx
+  implementation libs.androidx.lifecycle.runtime.ktx
+  implementation libs.androidx.lifecycle.runtime.compose
+  implementation libs.androidx.lifecycle.process
+  implementation libs.androidx.activity.compose
+  implementation platform(libs.androidx.compose.bom)
+  implementation libs.androidx.ui
+  implementation libs.androidx.ui.graphics
+  implementation libs.androidx.ui.tooling.preview
+  implementation libs.androidautosize
+  implementation libs.androidx.constraintlayout
+  testImplementation libs.junit
+  androidTestImplementation libs.androidx.junit
+  androidTestImplementation libs.androidx.espresso.core
+  androidTestImplementation project(':feature-player-native-dsp')
+  androidTestImplementation platform(libs.androidx.compose.bom)
+  androidTestImplementation libs.androidx.ui.test.junit4
+  debugImplementation libs.androidx.ui.tooling
+  debugImplementation libs.androidx.ui.test.manifest
+  implementation(libs.androidx.lifecycle.viewmodel.compose)
+  implementation(libs.androidx.media3.exoplayer.ffmpeg)
+
+  implementation libs.timber
+  implementation(libs.accompanist.permissions)
+  implementation(libs.androidx.paging.compose)
+
+  //  implementation project(":decoder_flac")
+  implementation libs.kotlinx.serialization.core
+  implementation libs.androidx.adaptive
+  implementation libs.androidx.adaptive.layout
+//  implementation libs.androidx.adaptive.navigation
+  // Jetpack Compose integration - Navigation 3
+  implementation libs.androidx.navigation3.runtime
+  implementation libs.androidx.navigation3.ui
+  implementation libs.androidx.lifecycle.viewmodel.navigation3
+  implementation libs.material3
+
+  implementation(libs.landscapist.core)
+  implementation(libs.landscapist.image)
+
+  // 播放器相关依赖 (实现层需要)
+  implementation libs.androidx.media3.exoplayer
+  implementation libs.androidx.media
+  implementation libs.androidx.media3.session
+  implementation libs.kotlinx.coroutines.guava
+
+  implementation libs.amplituda
+  implementation(libs.androidx.dynamicanimation.ktx)
+
+  // 网络请求
+  implementation libs.okhttp
+  implementation(libs.logging.interceptor)
+  implementation libs.retrofit
+  implementation libs.converter.moshi
+  implementation libs.sandwich.retrofit
+  implementation libs.moshi.kotlin
+  ksp libs.moshi.kotlin.codegen
+
+  //  implementation(libs.androidliquidglass)
+  implementation libs.androidx.constraintlayout.compose
+  implementation libs.androidx.compose.material.icons.core
+  implementation libs.prettytime
+  implementation libs.koin.androidx.compose
+//  implementation(libs.pinyin4j)
+  implementation(libs.androidx.compose.material.icons.extended)
+  implementation(libs.androidx.palette.ktx)
+  implementation(libs.cloudy)
+
+  implementation libs.androidx.graphics.core
+  implementation libs.androidx.graphics.path
+  implementation libs.androidx.graphics.shapes
+
+  implementation(libs.materialKolor)
+  implementation(libs.landscapist.transformation)
+  baselineProfile(project(':baselineprofile'))
+  implementation(libs.reorderable)
+
+  // haze
+  implementation(libs.haze)
+  implementation(libs.haze.blur)
+  implementation(libs.haze.materials)
+  implementation(libs.haze.glass)
+  implementation(libs.haze.glass.materials)
+}
+
+// Compose BOM 2026.06.01 会把 material3 顶到 1.5.0-alpha17，与 foundation 1.12.0（稳定）
+// 的 CustomStyle 接口 ABI 不兼容 —— TextFieldDefaults 里的 lambda 实现 alpha 版的
+// `CustomStyle.applyStyle`，运行时 foundation 稳定版找不到该抽象方法，抛
+// `AbstractMethodError`。这里强制把 material3 拉回稳定 1.4.0，避免 alpha/稳定 混搭。
+//configurations.configureEach {
+//  resolutionStrategy {
+//    force("androidx.compose.material3:material3:1.4.0")
+//    force("androidx.compose.material3:material3-android:1.4.0")
+//  }
+//}
+
+
+tasks.register('incrementBuildNumber') {
+  doLast {
+    def filePath = rootProject.file("gradle.properties")
+    if (!filePath.exists()) {
+      return
+    }
+    def props = new Properties()
+    props.load(new FileInputStream(filePath))
+    String currentBuildNumber = props["BUILD_VERSION"]
+    Integer buildNumber = Integer.parseInt(currentBuildNumber)
+    buildNumber++
+    if (buildNumber >= 10_000) {
+      throw new IllegalStateException("Build number limited to 3 digits; cannot exceed 10,000")
+    }
+    props["BUILD_VERSION"] = buildNumber.toString()
+    def os = new FileOutputStream(filePath)
+    props.store(os, null)
+  }
+}
+//tasks.getByPath("preBuild").dependsOn("incrementBuildNumber")

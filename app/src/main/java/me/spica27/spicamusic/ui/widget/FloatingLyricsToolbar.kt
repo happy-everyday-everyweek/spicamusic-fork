@@ -1,0 +1,223 @@
+package me.spica27.spicamusic.ui.widget
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import me.spica27.spicamusic.R
+import me.spica27.spicamusic.ui.theme.Shapes
+import java.util.Locale
+
+/**
+ * 歌词页浮动工具栏
+ *
+ * 提供歌词偏移量调节和打开歌词来源选择面板功能
+ *
+ * @param offsetMs 当前歌词偏移量（毫秒）
+ * @param onOffsetChange 偏移量变化回调
+ * @param onOpenLyricsSwitcher 打开歌词来源面板回调
+ * @param modifier Modifier
+ */
+@Composable
+fun FloatingLyricsToolbar(
+    offsetMs: Long,
+    onOffsetChange: (Long) -> Unit,
+    onOpenLyricsSwitcher: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // 展开的工具栏内容
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter =
+                fadeIn(spring(stiffness = Spring.StiffnessMedium)) +
+                    expandHorizontally(
+                        spring(stiffness = Spring.StiffnessMedium),
+                        expandFrom = Alignment.End,
+                    ),
+            exit =
+                fadeOut(spring(stiffness = Spring.StiffnessMedium)) +
+                    shrinkHorizontally(
+                        spring(stiffness = Spring.StiffnessMedium),
+                        shrinkTowards = Alignment.End,
+                    ),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 偏移量调节栏
+                OffsetAdjustBar(
+                    offsetMs = offsetMs,
+                    onOffsetChange = onOffsetChange,
+                )
+
+                // 切换歌词来源按钮（常驻：无内嵌/在线时用户仍可进入选择本地文件）
+                SwitchLyricsButton(
+                    onClick = {
+                        isExpanded = false
+                        onOpenLyricsSwitcher()
+                    },
+                )
+            }
+        }
+
+        // 主按钮（展开/收起）
+        LyricsCircleButton(
+            onClick = { isExpanded = !isExpanded },
+            size = 44.dp,
+        ) {
+            Icon(
+                imageVector = if (isExpanded) Icons.Rounded.Close else Icons.Rounded.Tune,
+                contentDescription = if (isExpanded) stringResource(R.string.collapse) else stringResource(R.string.lyrics_tool),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 偏移量调节栏
+ */
+@Composable
+private fun OffsetAdjustBar(
+    offsetMs: Long,
+    onOffsetChange: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LyricsPill(
+        modifier = modifier,
+        shape = Shapes.LargeCornerBasedShape,
+        horizontalPadding = 4.dp,
+        verticalPadding = 4.dp,
+    ) {
+        // -0.5s 按钮
+        ToolbarIconButton(
+            onClick = { onOffsetChange(offsetMs - 500) },
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Remove,
+                contentDescription = stringResource(R.string.advance_half_second),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        // 偏移量显示
+        val offsetText = formatOffset(offsetMs)
+        Text(
+            text = offsetText,
+            style = LyricsControlDefaults.pillLabelTextStyle,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier =
+                Modifier
+                    .clip(Shapes.LargeCornerBasedShape)
+                    .clickable { onOffsetChange(0) } // 点击重置
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+
+        // +0.5s 按钮
+        ToolbarIconButton(
+            onClick = { onOffsetChange(offsetMs + 500) },
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = stringResource(R.string.delay_half_second),
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 切换歌词按钮
+ */
+@Composable
+private fun SwitchLyricsButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LyricsPill(
+        modifier = modifier,
+        onClick = onClick,
+        shape = Shapes.ExtraLargeCornerBasedShape,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.SwapHoriz,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = stringResource(R.string.toggle_lyrics),
+            style = LyricsControlDefaults.pillLabelTextStyle,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * 工具栏小按钮
+ */
+@Composable
+private fun ToolbarIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    LyricsCircleButton(
+        onClick = onClick,
+        modifier = modifier,
+        size = 32.dp,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+    ) {
+        content()
+    }
+}
+
+/**
+ * 格式化偏移量显示
+ */
+private fun formatOffset(offsetMs: Long): String {
+    val seconds = offsetMs / 1000f
+    return when {
+        offsetMs == 0L -> "0.0s"
+        offsetMs > 0 -> String.format(Locale.CHINESE, "+%.1fs", seconds)
+        else -> String.format(Locale.CHINESE, "%.1fs", seconds)
+    }
+}

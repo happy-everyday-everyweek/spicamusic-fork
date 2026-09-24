@@ -1,0 +1,149 @@
+package me.spica27.spicamusic
+
+import android.app.Application
+import androidx.annotation.OptIn
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.media3.common.util.UnstableApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import me.spcia.lyric_core.di.extraInfoModule
+import me.spica27.spicamusic.audioeffects.AudioEffectsApplier
+import me.spica27.spicamusic.crash.CrashHandler
+import me.spica27.spicamusic.di.AppModule
+import me.spica27.spicamusic.feature.library.domain.MusicScanUseCases
+import me.spica27.spicamusic.feature.library.domain.PlayHistoryUseCases
+import me.spica27.spicamusic.feature.library.domain.libraryDomainModule
+import me.spica27.spicamusic.feature.lyrics.domain.lyricsDomainModule
+import me.spica27.spicamusic.feature.player.domain.playerDomainModule
+import me.spica27.spicamusic.feature.settings.domain.settingsDomainModule
+import me.spica27.spicamusic.player.api.IMusicPlayer
+import me.spica27.spicamusic.player.impl.SpicaPlayer
+import me.spica27.spicamusic.service.PlaybackService
+import me.spica27.spicamusic.storage.impl.di.storageModule
+import org.koin.android.ext.android.inject
+import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.GlobalContext.startKoin
+import timber.log.Timber
+
+/**
+ * 应用程序类
+ * 负责初始化 Koin 依赖注入、ImageLoader 和其他全局配置
+ */
+class App : Application() {
+    private val musicScanService: MusicScanUseCases by inject()
+
+    private val musicPlayer: IMusicPlayer by inject()
+
+    private val playHistoryUseCases: PlayHistoryUseCases by inject()
+
+    private val audioEffectsApplier: AudioEffectsApplier by inject()
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @OptIn(UnstableApi::class)
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+
+        // 初始化日志
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
+
+        // 初始化 Koin 依赖注入
+        startKoin {
+            androidLogger()
+            androidContext(this@App)
+            modules(
+                storageModule, // 数据模块 (feature-library-data)
+                SpicaPlayer.createModule(PlaybackService::class.java), // 数据模块 (feature-player-data)
+                libraryDomainModule,
+                playerDomainModule,
+                settingsDomainModule,
+                lyricsDomainModule,
+                AppModule.appModule, // 应用模块
+                extraInfoModule,
+            )
+        }
+
+        // Koin 启动后：加载并应用持久化音效设置
+        audioEffectsApplier.start(appScope)
+
+        // 播放历史保留窗裁剪：启动后台跑一次，把原始明细钉在保留窗内（只删明细、不动全时段汇总）
+        appScope.launch {
+            runCatching { playHistoryUseCases.pruneHistory() }
+                .onFailure { Timber.w(it, "播放历史裁剪失败") }
+        }
+
+        // 扫描 schema 版本升级时后台静默补扫（如新增 trackNumber 字段），无权限/版本最新则内部直接返回
+        appScope.launch {
+            runCatching { musicScanService.syncIfSchemaVersionChanged() }
+                .onFailure { Timber.w(it, "扫描 schema 版本补扫失败") }
+        }
+
+        // 启动 MediaStore 变更监听
+        setupMediaStoreObserver()
+        // FFT 采样跟随应用前后台状态
+        setupFftLifecycle()
+        CrashHandler.init(this)
+    }
+
+    /**
+     * FFT 频谱采样跟随应用前后台切换：
+     * 前台开启采样供可视化使用，后台停止采样以降低功耗。
+     * 处理器默认关闭，进程在后台被拉起（如媒体恢复）时不会采样。
+     */
+    private fun setupFftLifecycle() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    musicPlayer.fftProcessor.enable()
+                    Timber.d("应用进入前台，FFT 采样已开启")
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    musicPlayer.fftProcessor.disable()
+                    Timber.d("应用进入后台，FFT 采样已停止")
+                }
+            },
+        )
+    }
+
+    /**
+     * 设置 MediaStore 变更监听
+     * 绑定到应用生命周期，前台时监听，后台时停止（节省资源）
+     */
+    private fun setupMediaStoreObserver() {
+        // 立即启动监听器
+        musicScanService.startMediaStoreObserver()
+        Timber.i("MediaStore 监听器已启动")
+
+        // 监听应用前后台切换，优化资源使用
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    // 应用进入前台，启动监听
+                    musicScanService.startMediaStoreObserver()
+                    Timber.d("应用进入前台，MediaStore 监听器已启动")
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    // 应用进入后台，停止监听
+                    musicScanService.stopMediaStoreObserver()
+                    Timber.d("应用进入后台，MediaStore 监听器已停止")
+                }
+            },
+        )
+    }
+
+    companion object {
+        private lateinit var instance: App
+
+        fun getInstance(): App = instance
+    }
+}

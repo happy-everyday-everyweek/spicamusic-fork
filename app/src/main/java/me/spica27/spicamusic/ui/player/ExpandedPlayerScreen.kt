@@ -1,0 +1,1268 @@
+package me.spica27.spicamusic.ui.player
+
+import android.os.FileUtils
+import android.text.TextUtils
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import com.linc.amplituda.Amplituda
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.spica27.spicamusic.App
+import me.spica27.spicamusic.R
+import me.spica27.spicamusic.common.entity.DynamicCoverType
+import me.spica27.spicamusic.common.entity.ProgressBarStyle
+import me.spica27.spicamusic.core.preferences.PreferencesManager
+import me.spica27.spicamusic.feature.library.domain.SongUseCases
+import me.spica27.spicamusic.player.api.PlayMode
+import me.spica27.spicamusic.player.api.SleepTimerState
+import me.spica27.spicamusic.ui.glass.LiquidGlassVariant
+import me.spica27.spicamusic.ui.glass.LocalLiquidGlassConfig
+import me.spica27.spicamusic.ui.glass.liquidGlass
+import me.spica27.spicamusic.ui.glass.liquidGlassSource
+import me.spica27.spicamusic.ui.navigation.LocalBackStack
+import me.spica27.spicamusic.ui.navigation.LyricRoute
+import me.spica27.spicamusic.ui.navigation.SleepTimerRoute
+import me.spica27.spicamusic.ui.player.pages.CurrPlaylistPage
+import me.spica27.spicamusic.ui.theme.EaseOutEmphasized
+import me.spica27.spicamusic.ui.theme.LocalReducedMotion
+import me.spica27.spicamusic.ui.theme.ScaleEnterFrom
+import me.spica27.spicamusic.ui.theme.Shapes
+import me.spica27.spicamusic.ui.theme.Spacing
+import me.spica27.spicamusic.ui.widget.AudioCover
+import me.spica27.spicamusic.ui.widget.FluidMusicBackground
+import me.spica27.spicamusic.ui.widget.ShowOnIdleContent
+import me.spica27.spicamusic.ui.widget.audio_seekbar.AudioDynamicWaveSlider
+import me.spica27.spicamusic.ui.widget.audio_seekbar.AudioWaveSlider
+import me.spica27.spicamusic.ui.widget.clickHighlight
+import me.spica27.spicamusic.ui.widget.holographicCoverTilt
+import me.spica27.spicamusic.ui.widget.materialSharedAxisYIn
+import me.spica27.spicamusic.ui.widget.materialSharedAxisYOut
+import me.spica27.spicamusic.ui.widget.rememberIOSOverScrollEffect
+import me.spica27.spicamusic.utils.rememberDominantColorFromUri
+import org.koin.compose.koinInject
+import timber.log.Timber
+import java.io.File
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import androidx.compose.ui.util.lerp as floatLerp
+
+// ============================================
+// 常量定义
+// ============================================
+
+// 展开动画透明度阈值常量
+private const val PAGE_COUNT = 2
+const val DEFAULT_PAGE = 0
+private const val HERO_REVEAL_THRESHOLD = 0.08f
+private const val META_REVEAL_THRESHOLD = 0.18f
+private const val MINI_LYRIC_REVEAL_THRESHOLD = 0.24f
+private const val TAGS_REVEAL_THRESHOLD = 0.28f
+private const val SEEKBAR_REVEAL_THRESHOLD = 0.34f
+private const val PLAYER_CONTROLS_REVEAL_THRESHOLD = 0.48f
+private const val COLLAPSED_HERO_SCALE = 0.82f
+private val EmptyFftDrawData = FloatArray(0)
+
+/** 保存动态波形的最后一帧，场景被覆盖时停掉订阅但不让底层 UI 闪为空。 */
+private class FftDrawDataHolder {
+    var data: FloatArray = EmptyFftDrawData
+}
+
+/** 保存播放器被覆盖前的位置，隐藏场景不再读取高频 Snapshot 状态。 */
+private class PlaybackPositionHolder {
+    @Volatile
+    var realPosition: Float = 0f
+
+    @Volatile
+    var seekPosition: Float = 0f
+}
+
+// ============================================
+// 主屏幕组件
+// ============================================
+
+/**
+ * 全屏播放器页面
+ */
+@Composable
+fun ExpandedPlayerScreen(
+    modifier: Modifier = Modifier,
+    viewModel: PlayerViewModel = LocalPlayerViewModel.current,
+    onCollapse: () -> Unit,
+    progressProvider: () -> Float = { 1f }, // 展开进度提供器，避免整棵树每帧重组
+    initialPage: Int = DEFAULT_PAGE, // 初始页面索引
+    animationsEnabled: Boolean = true,
+) {
+    val backStack = LocalBackStack.current
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val sleepTimer by viewModel.sleepTimer.collectAsStateWithLifecycle()
+    val playMode by viewModel.playMode.collectAsStateWithLifecycle()
+    val currentMediaItem by viewModel.currentMediaItem.collectAsStateWithLifecycle()
+    val duration by viewModel.currentDuration.collectAsStateWithLifecycle()
+    val audioQualityInfo =
+        remember(currentMediaItem?.mediaId, currentMediaItem?.mediaMetadata?.extras) {
+            currentMediaItem.toAudioQualityInfo()
+        }
+
+    // 判断应用是否在前台（可见状态）。
+    // 不能用 collectAsStateWithLifecycle 去收集 currentStateFlow——那个收集器自身在
+    // 跌破 STARTED 时就停了，永远观察不到向下的转变，标志会锁死为 true，
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isAppInForeground by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, _ ->
+                isAppInForeground =
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 当前播放位置（定时更新）
+    // 使用 currentMediaItem?.mediaId 作为 key，切歌时自动重置 seek 状态
+    val mediaId = currentMediaItem?.mediaId
+    // 注意：保留 State 引用而非用 by 解包，避免每秒的播放位置更新触发整个播放器树重组。
+    // 位置读取下沉到 SeekBarSection 叶子组件，通过 provider lambda 局部消费。
+    val seekValueState = remember(mediaId) { mutableFloatStateOf(0f) }
+    var isSeekingState by remember(mediaId) { mutableStateOf(false) }
+
+    // 场景不可见时不订阅播放位置；SeekBar 通过 PlaybackPositionHolder 保留最后一帧。
+    val positionState =
+        if (animationsEnabled) {
+            viewModel.currentPosition.collectAsStateWithLifecycle()
+        } else {
+            remember(mediaId) { mutableLongStateOf(0L) }
+        }
+    val positionHolder = remember(mediaId) { PlaybackPositionHolder() }
+
+    val songLikeState by viewModel.currentSongIsLike.collectAsStateWithLifecycle()
+
+    LaunchedEffect(songLikeState) {
+        Timber.tag("ExpandedPlayerScreen").d("当前歌曲收藏状态: $songLikeState")
+    }
+
+    // progressProvider 里读的是动画/拖拽的 snapshot state，直接在组合期调用会让整棵播放器树
+    // 每帧重组，抵消掉「用 provider 传进度」的本意。包成 derivedStateOf 后每帧只重算这个
+    // 布尔值，仅在跨过阈值时才真正失效重组。
+    val isFullyExpanded by remember(progressProvider) {
+        derivedStateOf { progressProvider() > .99f }
+    }
+    val isPlayerPageRevealed by remember(progressProvider) {
+        derivedStateOf { progressProvider() > .4f }
+    }
+
+    BackHandler(isFullyExpanded) {
+        onCollapse.invoke()
+    }
+
+    // 将播放位置同步到 seekbar：用 snapshotFlow 在协程中观察位置变化，
+    // 避免在组合作用域读取高频 state 而导致重组。
+    LaunchedEffect(mediaId, animationsEnabled) {
+        if (!animationsEnabled) return@LaunchedEffect
+        snapshotFlow { positionState.value }
+            .collect { position ->
+                positionHolder.realPosition = position.toFloat()
+                if (!isSeekingState) {
+                    seekValueState.floatValue = position.toFloat()
+                    positionHolder.seekPosition = position.toFloat()
+                }
+            }
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // Pager 状态，使用传入的初始页面
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { PAGE_COUNT })
+
+    BackHandler(pagerState.currentPage == 1) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(
+                0,
+                animationSpec = tween(durationMillis = 300, easing = EaseOutCubic),
+            )
+        }
+    }
+
+    // 兜底吸附：快速向下滑动 / 手指滑出屏幕边缘导致手势被取消、未触发正常 fling 时，
+    // Pager 可能停在两页之间（offsetFraction != 0）。这里监听滚动结束，
+    // 若仍处于中间态则强制吸附到最近的页面，避免卡死在中间态。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling && abs(pagerState.currentPageOffsetFraction) > 0.01f) {
+                    pagerState.animateScrollToPage(
+                        pagerState.currentPage,
+                        animationSpec = tween(durationMillis = 300, easing = EaseOutCubic),
+                    )
+                }
+            }
+    }
+
+    // 从封面提取主色调
+    val coverColor =
+        rememberDominantColorFromUri(
+            uri = currentMediaItem?.mediaMetadata?.artworkUri,
+            fallbackColor = MaterialTheme.colorScheme.primary,
+        )
+    val hazeState = rememberHazeState()
+
+    Box(
+        modifier =
+            modifier
+                .graphicsLayer {
+                    alpha = progressProvider()
+                }.background(MaterialTheme.colorScheme.surface)
+                .fillMaxSize(),
+    ) {
+        // 流动背景仅在当前场景可见且应用处于前台时启用。
+        // NavigationStack 会保留底层场景，不能只依赖 Activity 生命周期判断可见性。
+        FluidMusicBackground(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .liquidGlassSource(hazeState),
+            coverColor = coverColor,
+            isDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
+            coverUri = { currentMediaItem?.mediaMetadata?.artworkUri },
+            enabled = animationsEnabled && isAppInForeground,
+        )
+
+        // 内容层
+        VerticalPager(
+            modifier = Modifier.fillMaxSize(),
+            state = pagerState,
+            key = { it },
+            overscrollEffect = rememberIOSOverScrollEffect(orientation = Orientation.Vertical),
+            flingBehavior =
+                PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapPositionalThreshold = .2f,
+                ),
+        ) {
+            if (it == 0) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // 水平 Pager 内容区域
+                    // 播放器页面
+                    ShowOnIdleContent(
+                        modifier = Modifier.weight(1f),
+                        visible = isPlayerPageRevealed,
+                    ) {
+                        PlayerPage(
+                            playerViewModel = viewModel,
+                            hazeState = hazeState,
+                            isSeekingState = isSeekingState,
+                            currentMediaItem = { currentMediaItem },
+                            audioQualityInfo = audioQualityInfo,
+                            realPositionProvider = {
+                                if (animationsEnabled) positionState.value.toFloat() else positionHolder.realPosition
+                            },
+                            seekPositionProvider = {
+                                if (animationsEnabled) seekValueState.floatValue else positionHolder.seekPosition
+                            },
+                            duration = duration,
+                            isPlaying = isPlaying,
+                            isLike = songLikeState,
+                            playMode = playMode,
+                            onValueChange = {
+                                isSeekingState = true
+                                seekValueState.floatValue = it * duration
+                                positionHolder.seekPosition = seekValueState.floatValue
+                            },
+                            onValueChangeFinished = {
+                                viewModel.seekTo(seekValueState.floatValue.toLong())
+                                isSeekingState = false
+                            },
+                            onPlayPauseClick = { viewModel.togglePlayPause() },
+                            onPreviousClick = { viewModel.skipToPrevious() },
+                            onNextClick = { viewModel.skipToNext() },
+                            onPlayModeClick = { viewModel.togglePlayMode() },
+                            onFavoriteClick = {
+                                viewModel.toggleLikeCurrentSong()
+                            },
+                            onSleepTimerClick = { backStack.add(SleepTimerRoute) },
+                            sleepTimer = sleepTimer,
+                            onPlaylistClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(
+                                        1,
+                                        animationSpec =
+                                            tween(
+                                                durationMillis = 320,
+                                                easing = EaseOutEmphasized,
+                                            ),
+                                    )
+                                }
+                            },
+                            progressProvider = progressProvider,
+                            isAppInForeground = isAppInForeground,
+                            animationsEnabled = animationsEnabled,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            } else {
+                // 播放列表
+                ShowOnIdleContent(true) {
+                    Box(
+                        modifier = Modifier,
+                    ) {
+                        CurrPlaylistPage(
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================
+// ---------- 音频信息组件 ----------
+
+@Immutable
+private data class AudioQualityInfo(
+    val sampleRate: Int,
+    val bitRate: Int,
+    val isLossless: Boolean,
+)
+
+private fun MediaItem?.toAudioQualityInfo(): AudioQualityInfo {
+    val extras = this?.mediaMetadata?.extras
+    val sampleRate = extras?.getInt("sampleRate") ?: 0
+    val bitRate = extras?.getInt("bitRate") ?: 0
+    val mimeType = extras?.getString("mimeType").orEmpty()
+    val isLossless =
+        mimeType.contains("flac", ignoreCase = true) ||
+            mimeType.contains("alac", ignoreCase = true) ||
+            mimeType.contains("wav", ignoreCase = true)
+
+    return AudioQualityInfo(
+        sampleRate = sampleRate,
+        bitRate = bitRate,
+        isLossless = isLossless,
+    )
+}
+
+// ---------- 播放器页面 ----------
+
+/**
+ * 播放器页面（原有的播放器内容）
+ */
+@Composable
+private fun PlayerPage(
+    playerViewModel: PlayerViewModel,
+    hazeState: HazeState,
+    currentMediaItem: () -> MediaItem?,
+    audioQualityInfo: AudioQualityInfo,
+    seekPositionProvider: () -> Float,
+    realPositionProvider: () -> Float,
+    duration: Long,
+    isPlaying: Boolean,
+    isLike: Boolean,
+    playMode: PlayMode,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onPlayModeClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onSleepTimerClick: () -> Unit,
+    onPlaylistClick: () -> Unit,
+    sleepTimer: SleepTimerState?,
+    progressProvider: () -> Float,
+    isAppInForeground: Boolean,
+    animationsEnabled: Boolean,
+    modifier: Modifier = Modifier,
+    isSeekingState: Boolean = false,
+) {
+    // 读取动态封面设置
+    val preferencesManager: PreferencesManager = koinInject()
+    val dynamicCoverTypeValue by preferencesManager
+        .getString(PreferencesManager.Keys.DYNAMIC_COVER_TYPE, DynamicCoverType.ShiningStars.value)
+        .collectAsStateWithLifecycle(initialValue = DynamicCoverType.ShiningStars.value)
+    val dynamicCoverType =
+        remember(dynamicCoverTypeValue) {
+            DynamicCoverType.fromString(dynamicCoverTypeValue)
+        }
+    val progressBarStyleValue by preferencesManager
+        .getString(PreferencesManager.Keys.PROGRESS_BAR_STYLE, ProgressBarStyle.TimeDomainWaveform.value)
+        .collectAsStateWithLifecycle(initialValue = ProgressBarStyle.TimeDomainWaveform.value)
+    val progressBarStyle =
+        remember(progressBarStyleValue) {
+            ProgressBarStyle.fromString(progressBarStyleValue)
+        }
+    val songUseCases = koinInject<SongUseCases>()
+
+    val backStack = LocalBackStack.current
+    val coverEffectsEnabled = animationsEnabled && isAppInForeground && !LocalReducedMotion.current
+
+    val title =
+        currentMediaItem
+            .invoke()
+            ?.mediaMetadata
+            ?.title
+            ?.toString()
+            ?: stringResource(R.string.unknown_song)
+    val artist =
+        currentMediaItem
+            .invoke()
+            ?.mediaMetadata
+            ?.artist
+            ?.toString()
+            ?: stringResource(R.string.unknown_artist)
+
+    Column(
+        modifier =
+            modifier
+                .navigationBarsPadding()
+                .padding(horizontal = Spacing.ExtraLarge)
+                .padding(top = Spacing.Medium, bottom = Spacing.Large),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // 封面区：弹性吸收剩余高度——矮屏上封面自动缩小而不挤压下方控件，
+        // 高屏上封面在区域内垂直居中，信息与控制区始终贴底对齐
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(vertical = Spacing.Medium),
+            contentAlignment = Alignment.Center,
+        ) {
+            // 封面（跳转全屏歌词时作为共享元素飞入歌词页 header）
+            Box(
+                modifier =
+                    Modifier
+                        .aspectRatio(1f)
+                        .graphicsLayer {
+                            val heroReveal =
+                                calculateFadeAlpha(progressProvider(), HERO_REVEAL_THRESHOLD)
+                            alpha = heroReveal
+                            translationY = (1f - heroReveal) * 48f
+                            scaleX = floatLerp(COLLAPSED_HERO_SCALE, 1f, heroReveal)
+                            scaleY = floatLerp(COLLAPSED_HERO_SCALE, 1f, heroReveal)
+                        }.holographicCoverTilt(
+                            enabled = coverEffectsEnabled,
+                            highlightColor = Color.White,
+                            spectralColor = MaterialTheme.colorScheme.tertiary,
+                        ).clip(Shapes.LargeCornerBasedShape),
+            ) {
+                AnimatedContent(
+                    currentMediaItem.invoke(),
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        materialSharedAxisYIn(true) togetherWith materialSharedAxisYOut(true)
+                    },
+                    contentKey = { it?.mediaId ?: "-1" },
+                ) { currentMediaItem ->
+                    AudioCover(
+                        uri = currentMediaItem?.mediaMetadata?.artworkUri,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .clip(Shapes.LargeCornerBasedShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .clickHighlight {
+                                    if (backStack.none { it is LyricRoute }) {
+                                        backStack.add(
+                                            LyricRoute(
+                                                heroArtworkUri =
+                                                    currentMediaItem
+                                                        ?.mediaMetadata
+                                                        ?.artworkUri
+                                                        ?.toString(),
+                                            ),
+                                        )
+                                    }
+                                },
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.Large))
+
+        // 歌曲信息
+        SongInfo(
+            title = title,
+            artist = artist,
+            modifier =
+                Modifier.graphicsLayer {
+                    val metaReveal = calculateFadeAlpha(progressProvider(), META_REVEAL_THRESHOLD)
+                    alpha = metaReveal
+                    translationY = (1f - metaReveal) * 24f
+                },
+        )
+
+        Spacer(modifier = Modifier.height(Spacing.ExtraSmall))
+
+        // mini 歌词：点击跳转全屏歌词页面
+        MiniLyric(
+            onClick = {
+                if (backStack.none { it is LyricRoute }) {
+                    backStack.add(
+                        LyricRoute(
+                            heroArtworkUri =
+                                currentMediaItem
+                                    .invoke()
+                                    ?.mediaMetadata
+                                    ?.artworkUri
+                                    ?.toString(),
+                        ),
+                    )
+                }
+            },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        val lyricReveal =
+                            calculateFadeAlpha(progressProvider(), MINI_LYRIC_REVEAL_THRESHOLD)
+                        alpha = lyricReveal
+                        translationY = (1f - lyricReveal) * 24f
+                    },
+        )
+
+        val amplituda: Amplituda = koinInject<Amplituda>()
+
+        // 优化：使用缓存机制避免重复加载波形数据
+        val amplitudeCache = remember { linkedMapOf<String, List<Int>>() }
+        var ampState by remember { mutableStateOf(listOf<Int>()) }
+
+        // 音频波形数据
+        LaunchedEffect(currentMediaItem.invoke()?.mediaId, progressBarStyle) {
+            if (progressBarStyle != ProgressBarStyle.TimeDomainWaveform) {
+                ampState = emptyList()
+                return@LaunchedEffect
+            }
+            val mediaId = currentMediaItem.invoke()?.mediaId ?: return@LaunchedEffect
+
+            // 检查缓存
+            if (amplitudeCache.containsKey(mediaId)) {
+                ampState = amplitudeCache[mediaId] ?: emptyList()
+                return@LaunchedEffect
+            }
+            launch(Dispatchers.IO) {
+                val data = loadAmplitudeData(currentMediaItem.invoke(), amplituda, songUseCases)
+
+                // 保存到缓存，最多保留3首歌曲的数据
+                if (amplitudeCache.size >= 3) {
+                    // 移除最旧的项
+                    amplitudeCache.remove(amplitudeCache.keys.first())
+                }
+                amplitudeCache[mediaId] = data
+                ampState = data
+            }
+        }
+        Spacer(modifier = Modifier.height(Spacing.Small))
+        // 音质标签：固定高度槽位保持版面节奏，无标签时留白而不是显示空药丸
+        val qualityTags =
+            buildList {
+                if (audioQualityInfo.sampleRate > 0) {
+                    add("${audioQualityInfo.sampleRate / 1000}kHz")
+                }
+                if (audioQualityInfo.bitRate > 0) {
+                    add("${audioQualityInfo.bitRate / 1000}kbps")
+                }
+                if (audioQualityInfo.isLossless) {
+                    add(stringResource(R.string.lossless))
+                }
+                if (audioQualityInfo.bitRate >= 320000 && !audioQualityInfo.isLossless) {
+                    add(stringResource(R.string.high_quality))
+                }
+            }
+        Box(
+            modifier =
+                Modifier
+                    .graphicsLayer {
+                        val tagsReveal =
+                            calculateFadeAlpha(progressProvider(), TAGS_REVEAL_THRESHOLD)
+                        alpha = tagsReveal
+                        translationY = (1f - tagsReveal) * 24f
+                    },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (qualityTags.isNotEmpty()) {
+                Row(
+                    modifier =
+                        Modifier
+                            .padding(horizontal = Spacing.Medium, vertical = 5.dp)
+                            .animateContentSize(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    qualityTags.forEachIndexed { index, tag ->
+                        Text(
+                            text = tag,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier =
+                                Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                                        shape = Shapes.SmallCornerBasedShape,
+                                    ).padding(horizontal = Spacing.Small, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(Spacing.Medium))
+        // 进度条（位置读取下沉到该子组件，避免每秒重组整个 PlayerPage）
+        SeekBarSection(
+            seekPositionProvider = seekPositionProvider,
+            realPositionProvider = realPositionProvider,
+            duration = duration,
+            amplitudes = ampState,
+            progressBarStyle = progressBarStyle,
+            playerViewModel = playerViewModel,
+            isAppInForeground = isAppInForeground,
+            animationsEnabled = animationsEnabled,
+            isSeekingState = isSeekingState,
+            onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
+            progressProvider = progressProvider,
+        )
+        Spacer(modifier = Modifier.height(Spacing.Large))
+        // 主播放控制：上一曲、播放/暂停、下一曲单独成行
+        TransportControls(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        val controlsReveal =
+                            calculateFadeAlpha(progressProvider(), PLAYER_CONTROLS_REVEAL_THRESHOLD)
+                        alpha = controlsReveal
+                        translationY = (1f - controlsReveal) * 24f
+                    },
+            hazeState = hazeState,
+            isPlaying = isPlaying,
+            onPlayPauseClick = onPlayPauseClick,
+            onPreviousClick = onPreviousClick,
+            onNextClick = onNextClick,
+        )
+        Spacer(modifier = Modifier.height(Spacing.Medium))
+        SecondaryActions(
+            modifier = Modifier.fillMaxWidth(),
+            playMode = playMode,
+            isLike = isLike,
+            sleepTimer = sleepTimer,
+            onPlayModeClick = onPlayModeClick,
+            onFavoriteClick = onFavoriteClick,
+            onSleepTimerClick = onSleepTimerClick,
+            onPlaylistClick = onPlaylistClick,
+        )
+    }
+}
+
+// ============================================
+// UI 子组件
+// ============================================
+
+/**
+ * 进度条区块。
+ * 单独抽出该叶子组件，使每秒的播放位置更新只重组这里，
+ * 而不是连带整个 [PlayerPage] 一起重组。
+ */
+@Composable
+private fun SeekBarSection(
+    seekPositionProvider: () -> Float,
+    realPositionProvider: () -> Float,
+    duration: Long,
+    amplitudes: List<Int>,
+    progressBarStyle: ProgressBarStyle,
+    playerViewModel: PlayerViewModel,
+    isAppInForeground: Boolean,
+    animationsEnabled: Boolean,
+    isSeekingState: Boolean,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    progressProvider: () -> Float,
+    modifier: Modifier = Modifier,
+) {
+    val seekPosition = seekPositionProvider()
+    val realPosition = realPositionProvider()
+    // FFT 插值计算随下方 collectAsStateWithLifecycle 收集自动启停，无需手动订阅/解绑
+    val useDynamicWaveform =
+        progressBarStyle == ProgressBarStyle.DynamicWaveform &&
+            isAppInForeground &&
+            animationsEnabled
+    val fftDataHolder = remember { FftDrawDataHolder() }
+    Column(
+        modifier =
+            modifier.graphicsLayer {
+                val seekbarReveal =
+                    calculateFadeAlpha(progressProvider(), SEEKBAR_REVEAL_THRESHOLD)
+                alpha = seekbarReveal
+                translationY = (1f - seekbarReveal) * 24f
+            },
+    ) {
+        val sliderProgress = if (duration > 0) (seekPosition / duration).coerceIn(0f, 1f) else 0f
+        when (progressBarStyle) {
+            ProgressBarStyle.DynamicWaveform -> {
+                val fftDrawData =
+                    if (useDynamicWaveform) {
+                        val drawData by playerViewModel.fftDrawData.collectAsStateWithLifecycle()
+                        SideEffect { fftDataHolder.data = drawData }
+                        drawData
+                    } else {
+                        fftDataHolder.data
+                    }
+                AudioDynamicWaveSlider(
+                    progress = sliderProgress,
+                    fftAmplitudes = fftDrawData,
+                    onProgressChange = {
+                        onValueChange.invoke(it)
+                    },
+                    onProgressChangeFinished = {
+                        onValueChangeFinished.invoke()
+                    },
+                    waveformBrush = SolidColor(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    progressBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
+                )
+            }
+
+            ProgressBarStyle.TimeDomainWaveform -> {
+                AudioWaveSlider(
+                    progress = sliderProgress,
+                    amplitudes = amplitudes,
+                    onProgressChange = {
+                        onValueChange.invoke(it)
+                    },
+                    onProgressChangeFinished = {
+                        onValueChangeFinished.invoke()
+                    },
+                    waveformBrush = SolidColor(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    progressBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(Spacing.Small))
+        // 当前位置 和 总时长（等宽数字避免走时跳动，两端与波形边缘对齐）
+        val timeStyle =
+            MaterialTheme.typography.labelMedium.copy(
+                fontFeatureSettings = "tnum",
+            )
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                modifier = Modifier.align(Alignment.CenterStart),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
+            ) {
+                Text(
+                    text = formatTime(realPosition.toLong()),
+                    style = timeStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+                // 滑动到的地方
+                AnimatedVisibility(
+                    visible = isSeekingState,
+                ) {
+                    Text(
+                        modifier =
+                            Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.inversePrimary,
+                                    shape = Shapes.SmallCornerBasedShape,
+                                ).padding(vertical = 4.dp, horizontal = 8.dp),
+                        text = formatTime(seekPosition.toLong()),
+                        style = timeStyle,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+            Text(
+                text = formatTime(duration),
+                style = timeStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
+// ---------- 播放器控制组件 ----------
+
+/** 歌曲信息 */
+@Composable
+private fun SongInfo(
+    title: String,
+    artist: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        AnimatedContent(
+            title,
+            transitionSpec = {
+                materialSharedAxisYIn(true) togetherWith materialSharedAxisYOut(true)
+            },
+            contentKey = { it },
+        ) { title ->
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.ExtraSmall))
+        AnimatedContent(
+            artist,
+            contentKey = { it },
+            transitionSpec = {
+                materialSharedAxisYIn(true) togetherWith materialSharedAxisYOut(true)
+            },
+        ) { artist ->
+            Text(
+                text = artist,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+/** 控制按钮图标切换：高频触发——短时长强 ease-out，不带弹性 */
+private fun controlIconTransform() =
+    (
+        fadeIn(tween(durationMillis = 160, easing = EaseOutEmphasized)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = 160, easing = EaseOutEmphasized),
+                initialScale = ScaleEnterFrom,
+            )
+    ).togetherWith(fadeOut(tween(durationMillis = 120, easing = EaseOutEmphasized)))
+
+/** 主播放控制：上一曲、播放/暂停、下一曲。 */
+@Composable
+private fun TransportControls(
+    modifier: Modifier,
+    hazeState: HazeState,
+    isPlaying: Boolean,
+    onPlayPauseClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+) {
+    val config = LocalLiquidGlassConfig.current
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Small),
+        ) {
+            IconButton(
+                onClick = onPreviousClick,
+                modifier = Modifier.size(52.dp),
+                colors =
+                    IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipPrevious,
+                    contentDescription = stringResource(R.string.previous_track),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            val playInteraction = remember { MutableInteractionSource() }
+            val playPressed by playInteraction.collectIsPressedAsState()
+            val playScale by animateFloatAsState(
+                targetValue = if (playPressed) 0.92f else 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = 1100f,
+                    ),
+                label = "playPressScale",
+            )
+            IconButton(
+                onClick = onPlayPauseClick,
+                interactionSource = playInteraction,
+                modifier =
+                    Modifier
+                        .size(80.dp)
+                        .liquidGlass(
+                            hazeState = hazeState,
+                            variant = LiquidGlassVariant.PlayButton,
+                            shape = CircleShape,
+                            fallbackColor = MaterialTheme.colorScheme.primary,
+                        ),
+            ) {
+                Box(
+                    modifier =
+                        Modifier.graphicsLayer {
+                            scaleX = playScale
+                            scaleY = playScale
+                        },
+                ) {
+                    AnimatedContent(
+                        targetState = isPlaying,
+                        transitionSpec = { controlIconTransform() },
+                        label = "playPauseIcon",
+                    ) { playing ->
+                        Icon(
+                            imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription =
+                                if (playing) {
+                                    stringResource(R.string.pause)
+                                } else {
+                                    stringResource(R.string.play)
+                                },
+                            tint =
+                                if (config.enabled) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimary
+                                },
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                }
+            }
+
+            IconButton(
+                onClick = onNextClick,
+                modifier = Modifier.size(52.dp),
+                colors =
+                    IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SkipNext,
+                    contentDescription = stringResource(R.string.next_track),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 播放辅助操作：收藏、睡眠定时、播放模式和播放队列。 */
+@Composable
+private fun SecondaryActions(
+    modifier: Modifier,
+    playMode: PlayMode,
+    isLike: Boolean,
+    sleepTimer: SleepTimerState?,
+    onPlayModeClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onSleepTimerClick: () -> Unit,
+    onPlaylistClick: () -> Unit,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(
+            shape = Shapes.SmallCornerBasedShape,
+            onClick = onFavoriteClick,
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor =
+                        if (isLike) {
+                            Color(0xffcf1322)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                ),
+        ) {
+            AnimatedContent(
+                targetState = isLike,
+                transitionSpec = { controlIconTransform() },
+                label = "favoriteIcon",
+            ) { liked ->
+                Icon(
+                    imageVector = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    contentDescription = stringResource(R.string.favorite),
+                    tint = LocalContentColor.current,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+        IconButton(
+            shape = Shapes.SmallCornerBasedShape,
+            onClick = onSleepTimerClick,
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor =
+                        if (sleepTimer != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                ),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = stringResource(R.string.settings_sleep_timer),
+                tint = LocalContentColor.current,
+            )
+        }
+        IconButton(
+            shape = Shapes.SmallCornerBasedShape,
+            onClick = onPlayModeClick,
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+        ) {
+            AnimatedContent(
+                targetState = playMode,
+                transitionSpec = { controlIconTransform() },
+                label = "playModeIcon",
+            ) { mode ->
+                Icon(
+                    imageVector =
+                        when (mode) {
+                            PlayMode.LOOP -> Icons.Rounded.Repeat
+                            PlayMode.LIST -> Icons.Rounded.RepeatOne
+                            PlayMode.SHUFFLE -> Icons.Rounded.Shuffle
+                        },
+                    contentDescription = stringResource(R.string.play_mode),
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+        IconButton(
+            shape = Shapes.SmallCornerBasedShape,
+            onClick = onPlaylistClick,
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = Color.Transparent,
+                ),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Default.PlaylistPlay,
+                contentDescription = stringResource(R.string.queue),
+                tint = LocalContentColor.current,
+                modifier = Modifier.size(26.dp),
+            )
+        }
+    }
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+/**
+ * 格式化时间 (毫秒 -> mm:ss)
+ */
+fun formatTime(millis: Long): String {
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
+    val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
+    return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
+}
+
+/**
+ * 计算淡入透明度
+ * @param progress 当前进度 (0-1)
+ * @param threshold 开始淡入的阈值
+ * @return 透明度值 (0-1)
+ */
+private fun calculateFadeAlpha(
+    progress: Float,
+    threshold: Float,
+): Float =
+    if (progress < threshold) {
+        0f
+    } else {
+        ((progress - threshold) / (1f - threshold)).coerceIn(0f, 1f)
+    }
+
+/**
+ * 加载音频波形数据
+ */
+private suspend fun loadAmplitudeData(
+    mediaItem: MediaItem?,
+    amplituda: Amplituda,
+    songUseCases: SongUseCases,
+): List<Int> =
+    withContext(Dispatchers.IO) {
+        val config = mediaItem?.localConfiguration ?: return@withContext emptyList()
+
+        // ALAC 和 MP4 格式不支持波形提取
+        if (config.mimeType == MimeTypes.AUDIO_ALAC || config.mimeType == MimeTypes.AUDIO_MP4) {
+            return@withContext emptyList()
+        }
+
+        val cache = mediaItem.mediaMetadata.extras?.getString("waveformData")
+
+        if (!TextUtils.isEmpty(cache)) {
+            val cachedList = cache!!.split(",").mapNotNull { it.toIntOrNull() }
+            if (cachedList.isNotEmpty()) {
+                Timber.tag("ExpandedPlayerScreen").d("使用缓存的波形数据，长度: ${cachedList.size}")
+                return@withContext cachedList
+            }
+        }
+        Timber.tag("ExpandedPlayerScreen").d("没有缓存的波形数据，开始提取...")
+        return@withContext try {
+            val uri = config.uri
+            App.getInstance().contentResolver.openInputStream(uri)?.use { inputStream ->
+                val tempFile =
+                    File.createTempFile("amplitude_cache", null, App.getInstance().cacheDir)
+
+                try {
+                    tempFile.outputStream().use { outputStream ->
+                        FileUtils.copy(inputStream, outputStream)
+                    }
+
+                    var result = emptyList<Int>()
+                    Timber.tag("ExpandedPlayerScreen").d("处理缓存文件: ${tempFile.absolutePath}")
+                    amplituda.processAudio(tempFile).get(
+                        {
+                            result = it.amplitudesAsList()
+                        },
+                        { result = emptyList() },
+                    )
+                    songUseCases.updateSongWaveform(
+                        mediaId = mediaItem.mediaId.toLongOrNull() ?: 0L,
+                        waveformData = result.joinToString(","),
+                    )
+                    mediaItem.mediaMetadata.extras?.putString(
+                        "waveformData",
+                        result.joinToString(","),
+                    )
+                    result
+                } finally {
+                    tempFile.delete()
+                }
+            } ?: emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
