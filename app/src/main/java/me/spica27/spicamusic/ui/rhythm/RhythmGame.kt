@@ -58,13 +58,15 @@ import org.koin.compose.koinInject
 import timber.log.Timber
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 音乐游戏：跟着歌曲的节奏点敲四条轨道。
  *
- * 谱面从音频波形现场分析得来——用自适应阈值抓局部能量峰，长音会变成需要长按的长条。
- * 进入游戏时会申请独占音频焦点，正在播放的音乐会自动让路，退出后恢复。
- * 界面保持安静：游戏中顶部只有连击，落点、命中闪光与震动承担全部反馈，结算时再给明细。
+ * 谱面从音频波形现场分析得来，长音会变成需要长按的长条；进入游戏时申请独占音频焦点，
+ * 正在播放的音乐会自动让路，退出后恢复。游戏中可随时暂停，暂停后能继续或直接结束本局；
+ * 结束时统一进结算页，给得分、最高连击、逐项判定与等级。
+ * 界面保持安静：游戏中顶部只有连击与暂停，反馈交给落点、闪光与震动。
  */
 @Composable
 fun RhythmGameOverlay(song: Song, onClose: () -> Unit) {
@@ -165,7 +167,8 @@ private fun RhythmPlay(
   onClose: () -> Unit,
 ) {
   val notes = chart.notes
-  val consumed = remember(chart) { mutableStateListOf<Boolean>().apply { repeat(notes.size) { add(false) } } }
+  val totalNotes = notes.size
+  val consumed = remember(chart) { mutableStateListOf<Boolean>().apply { repeat(totalNotes) { add(false) } } }
   val laneFlash = remember(chart) { mutableStateListOf<Float>().apply { repeat(LANE_COUNT) { add(0f) } } }
 
   var positionMs by remember { mutableLongStateOf(0L) }
@@ -175,11 +178,11 @@ private fun RhythmPlay(
   var perfectCount by remember { mutableIntStateOf(0) }
   var greatCount by remember { mutableIntStateOf(0) }
   var missCount by remember { mutableIntStateOf(0) }
+  var paused by remember { mutableStateOf(false) }
   var finished by remember { mutableStateOf(false) }
   var attempt by remember { mutableIntStateOf(0) }
   var player by remember { mutableStateOf<MediaPlayer?>(null) }
 
-  /** 进入游戏时拿到独占焦点，让正在播放的音乐自动停下；退出时把焦点还回去。 */
   val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
 
   DisposableEffect(song.mediaStoreId, attempt) {
@@ -208,6 +211,10 @@ private fun RhythmPlay(
   LaunchedEffect(chart, attempt) {
     val endMs = (notes.maxOfOrNull { it.timeMs + it.durationMs } ?: 0L) + 1500L
     while (isActive && !finished) {
+      if (paused) {
+        delay(32)
+        continue
+      }
       positionMs = runCatching { player?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L)
       notes.forEachIndexed { index, note ->
         val tailMs = note.timeMs + note.durationMs
@@ -231,14 +238,15 @@ private fun RhythmPlay(
   val noteColor = MaterialTheme.colorScheme.primary
   val accentColor = MaterialTheme.colorScheme.tertiary
   val comboColor = MaterialTheme.colorScheme.onSurface
+  val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
   Box(
     modifier =
       Modifier
         .fillMaxSize()
         .background(surfaceColor)
-        .pointerInput(chart, finished) {
-          if (finished) return@pointerInput
+        .pointerInput(chart, finished, paused) {
+          if (finished || paused) return@pointerInput
           detectTapGestures { offset ->
             val lane = ((offset.x / (size.width / LANE_COUNT)).toInt()).coerceIn(0, LANE_COUNT - 1)
             val hitIndex =
@@ -301,7 +309,6 @@ private fun RhythmPlay(
         val laneX = note.lane * laneWidth + laneWidth * 0.12f
         val noteWidth = laneWidth * 0.76f
         if (note.durationMs > 0L) {
-          // 长按：从头部一直拉到尾部的长条
           val tailY = judgeLineY - (headDelta + note.durationMs) / FALL_WINDOW_MS * judgeLineY
           val top = minOf(headY, tailY) - 13f
           val bottom = maxOf(headY, tailY) + 13f
@@ -334,47 +341,130 @@ private fun RhythmPlay(
       )
     }
 
-    Row(
-      modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.End,
-    ) {
-      OutlinedButton(onClick = onClose) { Text("退出") }
+    if (!finished) {
+      OutlinedButton(
+        onClick = {
+          paused = !paused
+          runCatching {
+            if (paused) player?.pause() else player?.start()
+          }
+        },
+        modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+      ) { Text(if (paused) "继续" else "暂停") }
     }
 
-    if (finished) {
+    if (paused && !finished) {
       Box(
-        modifier = Modifier.fillMaxSize().background(surfaceColor.copy(alpha = 0.94f)),
+        modifier = Modifier.fillMaxSize().background(surfaceColor.copy(alpha = 0.9f)),
         contentAlignment = Alignment.Center,
       ) {
         Column(
           horizontalAlignment = Alignment.CenterHorizontally,
           verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-          Text(song.displayName, style = MaterialTheme.typography.titleMedium, color = comboColor)
-          Text("得分 $score", style = MaterialTheme.typography.headlineSmall, color = comboColor, fontWeight = FontWeight.Bold)
-          Text("最高连击 $bestCombo", style = MaterialTheme.typography.bodyMedium, color = accentColor)
+          Text("已暂停", style = MaterialTheme.typography.titleLarge, color = comboColor)
           Text(
-            "完美 $perfectCount · 良好 $greatCount · 错过 $missCount",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "当前连击 $combo · 得分 $score",
+            style = MaterialTheme.typography.bodyMedium,
+            color = muted,
           )
           Button(onClick = {
-            score = 0
-            combo = 0
-            bestCombo = 0
-            perfectCount = 0
-            greatCount = 0
-            missCount = 0
-            finished = false
-            positionMs = 0L
-            for (index in consumed.indices) consumed[index] = false
-            for (lane in 0 until LANE_COUNT) laneFlash[lane] = 0f
-            attempt += 1
-          }) { Text("再来一局") }
-          OutlinedButton(onClick = onClose) { Text("回到歌曲") }
+            paused = false
+            runCatching { player?.start() }
+          }) { Text("继续") }
+          OutlinedButton(onClick = {
+            paused = false
+            runCatching { player?.pause() }
+            finished = true
+          }) { Text("结束本局") }
+          OutlinedButton(onClick = onClose) { Text("退出游戏") }
         }
       }
+    }
+
+    if (finished) {
+      RhythmResultDialog(
+        song = song,
+        score = score,
+        bestCombo = bestCombo,
+        perfectCount = perfectCount,
+        greatCount = greatCount,
+        missCount = missCount,
+        totalNotes = totalNotes,
+        onRestart = {
+          score = 0
+          combo = 0
+          bestCombo = 0
+          perfectCount = 0
+          greatCount = 0
+          missCount = 0
+          paused = false
+          finished = false
+          positionMs = 0L
+          for (index in consumed.indices) consumed[index] = false
+          for (lane in 0 until LANE_COUNT) laneFlash[lane] = 0f
+          attempt += 1
+        },
+        onClose = onClose,
+      )
+    }
+  }
+}
+
+/** 结算页：得分、最高连击、逐项判定、命中率与等级。 */
+@Composable
+private fun RhythmResultDialog(
+  song: Song,
+  score: Int,
+  bestCombo: Int,
+  perfectCount: Int,
+  greatCount: Int,
+  missCount: Int,
+  totalNotes: Int,
+  onRestart: () -> Unit,
+  onClose: () -> Unit,
+) {
+  val hitValue = perfectCount + greatCount * 0.6f
+  val accuracy = if (totalNotes > 0) (hitValue / totalNotes).coerceIn(0f, 1f) else 0f
+  val grade =
+    when {
+      accuracy >= 0.95f -> "S"
+      accuracy >= 0.85f -> "A"
+      accuracy >= 0.7f -> "B"
+      accuracy >= 0.5f -> "C"
+      else -> "D"
+    }
+
+  Box(
+    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    contentAlignment = Alignment.Center,
+  ) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      Text(song.displayName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+      Text(song.artist, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      Text(
+        grade,
+        style = MaterialTheme.typography.displayMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.tertiary,
+      )
+      Text("得分 $score", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+      Text("最高连击 $bestCombo", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+      Text(
+        "完美 $perfectCount · 良好 $greatCount · 错过 $missCount",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Text(
+        "命中率 ${(accuracy * 100).roundToInt()}% · 音符 $totalNotes",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Button(onClick = onRestart, modifier = Modifier.padding(top = 8.dp)) { Text("再来一局") }
+      OutlinedButton(onClick = onClose) { Text("回到歌曲") }
     }
   }
 }
@@ -430,11 +520,7 @@ private fun vibrate(context: Context, judge: Judge) {
 }
 
 /**
- * 把波形变成谱面。
- *
- * 阈值不是全局的定值，而是每个位置周边窗口的能量均值乘以系数——这样安静段落里的小鼓点
- * 也能成音，副歌里的持续器乐也不会把整段铺满音符。峰值后面若能量仍维持在高位，
- * 就视为长音，生成需要长按的长条；轨道按强弱成对左右分配，保证四条轨道都被用到。
+ * 把波形变成谱面：自适应阈值抓局部能量峰，长音生成长条，轨道按强弱成对左右分配。
  */
 private fun buildChart(song: Song, rawAmplitudes: List<Int>): RhythmChart {
   val size = rawAmplitudes.size
@@ -468,7 +554,6 @@ private fun buildChart(song: Song, rawAmplitudes: List<Int>): RhythmChart {
     val timeMs = index * intervalMs
 
     if (isPeak && timeMs - lastAcceptedMs >= MIN_GAP_MS) {
-      // 峰值之后能量仍在均值附近 → 长音
       var tail = index
       while (tail + 1 < size && norm[tail + 1] >= localMean * 0.85f) tail++
       val holdMs = (tail - index) * intervalMs
