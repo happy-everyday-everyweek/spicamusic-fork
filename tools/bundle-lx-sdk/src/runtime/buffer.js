@@ -133,3 +133,6 @@ export class Buffer extends Uint8Array {
 export function installBuffer() {
   if (!globalThis.Buffer) globalThis.Buffer = Buffer
 }
+
+// 模块被导入时就安装，保证后续模块（含音源本体）在模块体阶段就能用到 Buffer。
+installBuffer()
