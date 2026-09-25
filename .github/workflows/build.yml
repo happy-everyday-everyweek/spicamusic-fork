@@ -45,6 +45,8 @@ jobs:
         run: |
           node -e "
             const fs=require('fs');const vm=require('vm');
+            globalThis.navigator={userAgent:'node-smoke'};
+            globalThis.window=globalThis;
             globalThis.__lx_native_call__=(k,a,p)=>'{}';
             globalThis.__lx_native_call__set_timeout=(id,ms)=>{};
             globalThis.__lx_native_call__utils_str2b64=(s)=>String(s);
