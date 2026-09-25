@@ -218,7 +218,6 @@ private fun RhythmPlay(
   DisposableEffect(song.mediaStoreId, attempt) {
     val focusRequest =
       AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
-        .setWillPauseWhenDucked(true)
         .build()
     runCatching { audioManager?.requestAudioFocus(focusRequest) }
     val mediaPlayer =
