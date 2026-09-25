@@ -122,6 +122,7 @@ private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
   val context = LocalContext.current
   val amplituda = koinInject<Amplituda>()
   val songUseCases = koinInject<SongUseCases>()
+  val playHistory = koinInject<me.spica27.spicamusic.feature.library.domain.PlayHistoryUseCases>()
 
   var chart by remember(song.mediaStoreId) { mutableStateOf<RhythmChart?>(null) }
   var analyzing by remember(song.mediaStoreId) { mutableStateOf(true) }
@@ -148,7 +149,7 @@ private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
     }
     chart = buildChart(song, amplitudes)
     // 游戏时长同样计入听歌统计：按一次完整播放记入历史。
-    runCatching { songUseCases.addPlayHistory(song.mediaStoreId) }
+    runCatching { playHistory.addPlayHistory(song.mediaStoreId) }
       .onFailure { Timber.tag("RhythmGame").w(it, "写入播放历史失败") }
     analyzing = false
   }
@@ -551,19 +552,19 @@ private fun vibrate(context: Context, judge: Judge) {
 /**
  * 把波形变成谱面：自适应阈值抓局部能量峰，长音生成长条，轨道按强弱成对左右分配。
  */
-private fun buildChart(song: Song, rawAmplitudes: List<Int>): RhythmChart {
+private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>): RhythmChart {
   val size = rawAmplitudes.size
   if (size < 8) {
-    return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, emptyList())
+    return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, emptyList())
   }
   val values = FloatArray(size) { rawAmplitudes[it].toFloat().coerceAtLeast(0f) }
   val max = values.max()
   if (max <= 0f) {
-    return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, emptyList())
+    return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, emptyList())
   }
   val norm = FloatArray(size) { values[it] / max }
   val intervalMs =
-    if (song.duration > 0L) (song.duration / size).coerceAtLeast(1L) else 20L
+    if (song.durationMs > 0L) (song.durationMs / size).coerceAtLeast(1L) else 20L
 
   val notes = ArrayList<RhythmNote>()
   val window = 40
@@ -603,5 +604,5 @@ private fun buildChart(song: Song, rawAmplitudes: List<Int>): RhythmChart {
     index++
   }
 
-  return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, notes)
+  return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, notes)
 }
