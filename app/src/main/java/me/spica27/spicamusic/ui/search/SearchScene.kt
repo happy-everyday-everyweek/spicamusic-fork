@@ -262,14 +262,16 @@ fun SearchScreen() {
                                 playingMediaId = currentMediaItem?.mediaId,
                                 onPlay = { song -> playerViewModel.playSong(song) },
                                 onMore = { song -> backStack.add(SongMenuRoute(song)) },
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                // fill = false：本地结果少时不要撑出一大块空白
+                                modifier = Modifier.weight(1f, fill = false).fillMaxWidth(),
                             )
                             OnlineSearchMoreRow(onClick = { searchViewModel.searchOnlineMore(searchKey) })
                             OnlineResultsSection(
                                 state = onlineState,
                                 progressOf = { track -> searchViewModel.onlineProgress(track) },
                                 onTrackClick = { track -> searchViewModel.downloadOnline(track) },
-                                modifier = Modifier.weight(0.7f),
+                                // 同样按内容占位，避免被容器边缘裁掉分组头
+                                modifier = Modifier.weight(1f, fill = false),
                             )
                         }
                 }
