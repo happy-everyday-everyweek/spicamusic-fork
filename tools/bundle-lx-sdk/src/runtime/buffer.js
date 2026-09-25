@@ -136,3 +136,23 @@ export function installBuffer() {
 
 // 模块被导入时就安装，保证后续模块（含音源本体）在模块体阶段就能用到 Buffer。
 installBuffer()
+
+// 音源脚本里有直接读浏览器全局量的代码（如酷狗签名 vendor 用 navigator），
+// 这里补上最小实现，避免导入阶段就报未定义。
+if (typeof globalThis.navigator === "undefined") {
+  globalThis.navigator = {
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36",
+    platform: "Android",
+    language: "zh-CN",
+  }
+}
+if (typeof globalThis.window === "undefined") {
+  globalThis.window = globalThis
+}
+if (typeof globalThis.document === "undefined") {
+  globalThis.document = {
+    createElement: () => ({}),
+    getElementsByTagName: () => [],
+  }
+}
