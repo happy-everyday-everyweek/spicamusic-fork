@@ -444,7 +444,7 @@ private fun RhythmPlay(
 /** 结算页：得分、最高连击、逐项判定、命中率与等级。 */
 @Composable
 private fun RhythmResultDialog(
-  song: Song,
+  song: MusicGameSource,
   score: Int,
   bestCombo: Int,
   perfectCount: Int,
@@ -473,7 +473,7 @@ private fun RhythmResultDialog(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Text(song.displayName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+      Text(song.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
       Text(song.artist, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       Text(
         grade,
@@ -500,7 +500,7 @@ private fun RhythmResultDialog(
 }
 
 /** 现场分析：优先直接用文件路径，路径不可读时再从 Uri 复制到缓存再解。 */
-private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: Song): List<Int> {
+private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: MusicGameSource): List<Int> {
   val direct = File(song.path)
   if (direct.exists() && direct.canRead()) {
     return runAmplituda(amplituda, direct)
