@@ -1,5 +1,6 @@
 package me.spica27.spicamusic.ui.dialog
 
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -370,6 +371,15 @@ private fun SongMenuContent(
                 subtitle = stringResource(R.string.desc_add_to_ignore_list),
                 icon = Icons.Default.MusicOff,
                 onClick = onIgnoreSong,
+            )
+            val rhythmContext = androidx.compose.ui.platform.LocalContext.current
+            ControlItem(
+                title = "生成音游谱面",
+                subtitle = "把这首歌的节奏点导出成音游谱面（JSON）",
+                icon = Icons.Default.GraphicEq,
+                onClick = {
+                    me.spica27.spicamusic.ui.rhythm.RhythmChartExporter.export(rhythmContext, song)
+                },
             )
             ControlItem(
                 title = stringResource(R.string.view_album),
