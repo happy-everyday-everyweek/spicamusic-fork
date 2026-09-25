@@ -68,13 +68,39 @@ import kotlin.math.roundToInt
  * 结束时统一进结算页，给得分、最高连击、逐项判定与等级。
  * 界面保持安静：游戏中顶部只有连击与暂停，反馈交给落点、闪光与震动。
  */
+/** 启动音乐游戏所需的最小信息，歌曲与播放器当前媒体项都能喂进来。 */
+data class MusicGameSource(
+  val mediaStoreId: Long,
+  val path: String,
+  val title: String,
+  val artist: String,
+  val durationMs: Long,
+  val waveformData: String?,
+)
+
 @Composable
 fun RhythmGameOverlay(song: Song, onClose: () -> Unit) {
+  RhythmGameOverlay(
+    source =
+      MusicGameSource(
+        mediaStoreId = song.mediaStoreId,
+        path = song.path,
+        title = song.displayName,
+        artist = song.artist,
+        durationMs = song.duration,
+        waveformData = song.waveformData,
+      ),
+    onClose = onClose,
+  )
+}
+
+@Composable
+fun RhythmGameOverlay(source: MusicGameSource, onClose: () -> Unit) {
   Dialog(
     onDismissRequest = onClose,
     properties = DialogProperties(usePlatformDefaultWidth = false),
   ) {
-    RhythmGameSurface(song = song, onClose = onClose)
+    RhythmGameSurface(song = source, onClose = onClose)
   }
 }
 
@@ -92,7 +118,7 @@ private const val MIN_GAP_MS = 110L
 private const val HOLD_MIN_MS = 420L
 
 @Composable
-private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
+private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
   val context = LocalContext.current
   val amplituda = koinInject<Amplituda>()
   val songUseCases = koinInject<SongUseCases>()
@@ -165,7 +191,7 @@ private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
 @Composable
 private fun RhythmPlay(
   chart: RhythmChart,
-  song: Song,
+  song: MusicGameSource,
   context: Context,
   onClose: () -> Unit,
 ) {

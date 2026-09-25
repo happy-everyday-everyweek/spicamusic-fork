@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1078,11 +1079,45 @@ private fun SecondaryActions(
     onSleepTimerClick: () -> Unit,
     onPlaylistClick: () -> Unit,
 ) {
+    val musicGamePlayer = LocalPlayerViewModel.current
+    val musicGameItem by musicGamePlayer.currentMediaItem.collectAsStateWithLifecycle()
+    var showMusicGame by remember { mutableStateOf(false) }
+    if (showMusicGame && musicGameItem != null) {
+        val mediaUri = musicGameItem?.localConfiguration?.uri
+        me.spica27.spicamusic.ui.rhythm.RhythmGameOverlay(
+            source =
+                me.spica27.spicamusic.ui.rhythm.MusicGameSource(
+                    mediaStoreId = musicGameItem?.mediaId?.toLongOrNull() ?: 0L,
+                    path = mediaUri?.path ?: mediaUri?.toString().orEmpty(),
+                    title = musicGameItem?.mediaMetadata?.title?.toString().orEmpty(),
+                    artist = musicGameItem?.mediaMetadata?.artist?.toString().orEmpty(),
+                    durationMs = musicGameItem?.mediaMetadata?.durationMs ?: 0L,
+                    waveformData = musicGameItem?.mediaMetadata?.extras?.getString("waveformData"),
+                ),
+            onClose = { showMusicGame = false },
+        )
+    }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(
+            shape = Shapes.SmallCornerBasedShape,
+            onClick = { showMusicGame = true },
+            colors =
+                IconButtonDefaults.iconButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.SportsEsports,
+                contentDescription = "音乐游戏",
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
         IconButton(
             shape = Shapes.SmallCornerBasedShape,
             onClick = onFavoriteClick,
