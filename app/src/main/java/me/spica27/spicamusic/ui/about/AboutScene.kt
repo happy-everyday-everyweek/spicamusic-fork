@@ -41,8 +41,8 @@ import me.spica27.spicamusic.ui.navigation.PrivacyPolicyRoute
 import me.spica27.spicamusic.ui.theme.Shapes
 import me.spica27.spicamusic.ui.theme.Spacing
 
-/** 项目 GitHub 主页地址。 */
-internal const val PROJECT_HOME_URL = "https://github.com/yangSpica27/SPICaMusic_Android"
+/** 项目 GitHub 主页地址（本分支）。 */
+internal const val PROJECT_HOME_URL = "https://github.com/happy-everyday-everyweek/spicamusic-fork"
 
 @Composable
 fun AboutScreen() {
@@ -85,6 +85,14 @@ fun AboutScreen() {
                     subtitle = stringResource(R.string.about_open_source_subtitle),
                     icon = Icons.Default.Code,
                     onClick = { backStack.add(OpenSourceLicensesRoute) },
+                    trailingContent = { ChevronRightIcon() },
+                )
+                AboutItemDivider()
+                AboutRow(
+                    title = "本分支主页",
+                    subtitle = "GPL-3.0 分支：集成洛雪音源与 FuoEvolve 移植",
+                    icon = Icons.Default.Code,
+                    onClick = { openUrl(PROJECT_HOME_URL) },
                     trailingContent = { ChevronRightIcon() },
                 )
                 AboutItemDivider()
