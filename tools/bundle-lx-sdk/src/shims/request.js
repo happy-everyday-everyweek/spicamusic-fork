@@ -25,11 +25,23 @@ const buildPromise = (url, options = {}) => {
       obj.isCancelled = true
     },
   }
+  // needle 会把对象类型的 data 序列化成表单；原生桥只接受字符串，
+  // 不处理的话 POST 会发出 "[object Object]"，音源就整体拿不到数据。
+  const rawBody = options.body ?? options.data ?? null
+  let body = rawBody
+  let headers = options.headers || {}
+  if (rawBody != null && typeof rawBody !== 'string') {
+    body = new URLSearchParams(rawBody).toString()
+    const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
+    if (!hasContentType) {
+      headers = { ...headers, 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+    }
+  }
   obj.promise = httpRequest({
     url,
     method: (options.method || 'get').toUpperCase(),
-    headers: options.headers || {},
-    body: options.body ?? options.data ?? null,
+    headers,
+    body,
     timeout: options.timeout || 15000,
   })
     .then(normalizeResp)
