@@ -121,6 +121,9 @@ private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
       return@LaunchedEffect
     }
     chart = buildChart(song, amplitudes)
+    // 游戏时长同样计入听歌统计：按一次完整播放记入历史。
+    runCatching { songUseCases.addPlayHistory(song.mediaStoreId) }
+      .onFailure { Timber.tag("RhythmGame").w(it, "写入播放历史失败") }
     analyzing = false
   }
 
