@@ -104,6 +104,7 @@ class MusicScanService(
      */
     private class ScanRuleMatcher(
         val rules: ScanRules,
+        val scopeAllows: (String?) -> Boolean = { true },
     ) {
         private val allowedMimeTypes = rules.allowedMimeTypes()
         private val allowedExtensions = rules.allowedExtensions()
@@ -113,6 +114,7 @@ class MusicScanService(
             mimeType: String,
             path: String,
         ): Boolean {
+            if (!scopeAllows(path)) return false
             if (mimeType.lowercase() in allowedMimeTypes) return true
             val ext = path.substringAfterLast('.', "").lowercase()
             return ext.isNotEmpty() && ext in allowedExtensions
@@ -129,6 +131,8 @@ class MusicScanService(
             rules.minFileSizeBytes <= 0 || sizeBytes <= 0 || sizeBytes >= rules.minFileSizeBytes
     }
 
+    private val scanScope: ScanScopePrefs by lazy { ScanScopePrefs(context) }
+
     private suspend fun loadScanRuleMatcher(): ScanRuleMatcher =
         ScanRuleMatcher(
             try {
@@ -137,6 +141,8 @@ class MusicScanService(
                 Timber.tag(TAG).w(e, "读取扫描规则失败，使用默认规则")
                 ScanRules.DEFAULT
             },
+            // 白名单是最终过滤：全量扫描、额外目录扫描与增量同步统一在这里生效
+            scopeAllows = { path -> scanScope.allows(path) },
         )
 
     override fun getScanProgress(): Flow<ScanProgress?> = _scanProgress.asStateFlow()

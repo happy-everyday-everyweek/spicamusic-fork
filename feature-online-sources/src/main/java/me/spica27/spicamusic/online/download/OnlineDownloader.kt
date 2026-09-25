@@ -1,4 +1,7 @@
 package me.spica27.spicamusic.online.download
+import android.os.ParcelFileDescriptor
+import com.kyant.taglib.Picture
+import com.kyant.taglib.TagLib
 
 import android.content.Context
 import android.media.MediaScannerConnection
@@ -69,7 +72,10 @@ class OnlineDownloader(
       }
       val result = runCatching { fetch(url, target, trackKey) }
       if (result.isSuccess) {
-        writeSidecarLyric(track, target)
+        val lyric = fetchLyric(track)
+        val cover = fetchCover(track)
+        writeSidecarLyric(lyric, target)
+        writeEmbeddedTags(target, lyric, cover)
         registerInMediaStore(target)
         _states.update { it + (trackKey to DownloadState.Done(target.absolutePath)) }
         return target
@@ -123,12 +129,69 @@ class OnlineDownloader(
   }
 
   /** 歌词先以同名 .lrc 旁挂，保证离线可用。 */
-  private suspend fun writeSidecarLyric(track: OnlineTrack, audio: File) {
-    val lyric = source.lyric(track) ?: return
+  private suspend fun writeSidecarLyric(lyric: String?, audio: File) {
+    if (lyric.isNullOrBlank()) return
     runCatching {
       val stem = audio.name.substringBeforeLast('.')
       File(audio.parentFile, "$stem.lrc").writeText(lyric)
     }.onFailure { Timber.tag("OnlineDownloader").w(it, "写入歌词失败") }
+  }
+
+  private suspend fun fetchLyric(track: OnlineTrack): String? =
+    runCatching { source.lyric(track) }.getOrNull()?.takeIf { it.isNotBlank() }
+
+  private suspend fun fetchCover(track: OnlineTrack): ByteArray? {
+    val url = track.coverUrl?.takeIf { it.isNotBlank() } ?: return null
+    return runCatching {
+      val request =
+        Request.Builder()
+          .url(url)
+          .header(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36",
+          )
+          .build()
+      client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) return@use null
+        response.body?.bytes()
+      }
+    }.getOrNull()
+  }
+
+  /**
+   * 把歌词与封面写进音频标签，之后由柠檬音乐的内嵌歌词读取链路直接吃这份数据。
+   * 任何一步失败都只记日志，不影响下载结果——音频文件与旁挂歌词已经落地。
+   */
+  private fun writeEmbeddedTags(audio: File, lyric: String?, cover: ByteArray?) {
+    if (lyric.isNullOrBlank() && cover == null) return
+    runCatching {
+      if (!lyric.isNullOrBlank()) {
+        ParcelFileDescriptor.open(audio, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
+          val metadata = TagLib.getMetadata(fd = pfd.dup().detachFd(), readPictures = false)
+          if (metadata != null) {
+            val map = metadata.propertyMap
+            map["LYRICS"] = arrayOf(lyric)
+            map["UNSYNCEDLYRICS"] = arrayOf(lyric)
+            TagLib.savePropertyMap(pfd.dup().detachFd(), map)
+          }
+        }
+      }
+      if (cover != null) {
+        ParcelFileDescriptor.open(audio, ParcelFileDescriptor.MODE_READ_WRITE).use { pfd ->
+          TagLib.savePictures(
+            pfd.dup().detachFd(),
+            arrayOf(
+              Picture(
+                data = cover,
+                description = "Front Cover",
+                pictureType = "Front Cover",
+                mimeType = "image/jpeg",
+              ),
+            ),
+          )
+        }
+      }
+    }.onFailure { Timber.tag("OnlineDownloader").w(it, "写入内嵌标签失败") }
   }
 
   private fun registerInMediaStore(file: File) {
