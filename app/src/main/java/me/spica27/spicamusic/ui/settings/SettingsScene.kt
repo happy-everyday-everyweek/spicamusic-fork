@@ -876,16 +876,15 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
         }
     val concurrencyOptions =
         remember {
-            ImmutableList.of(
-                *(1..8)
-                    .map { count ->
-                        SettingsOption(
-                            value = "$count",
-                            label = "$count 首",
-                            description = "同时下载 $count 首",
-                            icon = Icons.Default.Tune,
-                        )
-                    }.toTypedArray(),
+            ImmutableList.copyOf(
+                (1..8).map { count ->
+                    SettingsOption(
+                        value = "$count",
+                        label = "$count 首",
+                        description = "同时下载 $count 首",
+                        icon = Icons.Default.Tune,
+                    )
+                },
             )
         }
     val nameStyleOptions =
