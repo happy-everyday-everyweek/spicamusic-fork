@@ -847,7 +847,7 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
 
     val qualityOptions =
         remember {
-            kotlinx.collections.immutable.persistentListOf(
+            ImmutableList.of(
                 SettingsOption(
                     value = me.spica27.spicamusic.online.OnlineQuality.Q128.key,
                     label = "128k",
@@ -876,7 +876,7 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
         }
     val concurrencyOptions =
         remember {
-            kotlinx.collections.immutable.persistentListOf(
+            ImmutableList.of(
                 *(1..8)
                     .map { count ->
                         SettingsOption(
@@ -890,7 +890,7 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
         }
     val nameStyleOptions =
         remember {
-            kotlinx.collections.immutable.persistentListOf(
+            ImmutableList.of(
                 SettingsOption(
                     value = me.spica27.spicamusic.online.settings.FileNameStyle.TITLE_ARTIST.name,
                     label = "歌名 - 歌手",
