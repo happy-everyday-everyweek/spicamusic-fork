@@ -74,9 +74,12 @@ class OnlineDownloader(
       if (result.isSuccess) {
         val lyric = fetchLyric(track)
         val cover = fetchCover(track)
-        writeSidecarLyric(lyric, target)
-        writeEmbeddedTags(target, lyric, cover)
-        registerInMediaStore(target)
+        // 标签与旁挂歌词都是磁盘写入，放在 IO 线程，别占着主线程。
+        withContext(Dispatchers.IO) {
+          writeSidecarLyric(lyric, target)
+          writeEmbeddedTags(target, lyric, cover)
+          registerInMediaStore(target)
+        }
         _states.update { it + (trackKey to DownloadState.Done(target.absolutePath)) }
         return target
       }

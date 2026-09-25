@@ -41,6 +41,24 @@ jobs:
             echo "LX music SDK bundler not present yet, skipping"
           fi
 
+      - name: Smoke test LX bundle
+        run: |
+          node -e "
+            const fs=require('fs');const vm=require('vm');
+            globalThis.__lx_native_call__=(k,a,p)=>'{}';
+            globalThis.__lx_native_call__set_timeout=(id,ms)=>{};
+            globalThis.__lx_native_call__utils_str2b64=(s)=>String(s);
+            globalThis.__lx_native_call__utils_b642buf=(s)=>s;
+            globalThis.__lx_native_call__utils_str2md5=(s)=>'';
+            globalThis.__lx_native_call__utils_aes_encrypt=(m,d,k,iv)=>'';
+            globalThis.__lx_native_call__utils_rsa_encrypt=(m,k)=>'';
+            const src=fs.readFileSync('app/src/main/assets/lx/musicSdk.js','utf8');
+            vm.runInThisContext(src, {filename:'musicSdk.js'});
+            if (typeof globalThis.LxMusicSdk === 'undefined') { throw new Error('LX bundle 未暴露 LxMusicSdk'); }
+            if (typeof globalThis.Buffer === 'undefined') { throw new Error('LX bundle 没有在模块体阶段安装 Buffer'); }
+            console.log('LX bundle smoke ok');
+          "
+
       - name: Unit tests
         run: |
           ./gradlew :feature-online-sources:testDebugUnitTest :feature-library-domain:testDebugUnitTest \

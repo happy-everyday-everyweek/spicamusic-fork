@@ -224,8 +224,9 @@ private fun RhythmPlay(
       runCatching {
           MediaPlayer().apply {
             setDataSource(song.path)
-            prepare()
-            start()
+            // 异步准备：大文件也不会卡住主线程。
+            setOnPreparedListener { prepared -> runCatching { prepared.start() } }
+            prepareAsync()
           }
         }
         .getOrNull()
