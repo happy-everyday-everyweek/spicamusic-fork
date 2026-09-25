@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,6 +16,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -184,7 +187,7 @@ private fun MotionDialogRouteLayout(
 
     Box(
         modifier = Modifier.fillMaxSize().then(dismissModifier),
-        contentAlignment = Alignment.Center,
+        contentAlignment = if (isLargeScreen) Alignment.Center else Alignment.BottomCenter,
     ) {
         Box(
             modifier =
@@ -200,6 +203,15 @@ private fun MotionDialogRouteLayout(
         Box(
             modifier =
                 Modifier
+                    .then(
+                        if (isLargeScreen) {
+                            Modifier
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                        },
+                    )
                     .graphicsLayer {
                         val progress = contentProgress.value
                         if (isLargeScreen) {
