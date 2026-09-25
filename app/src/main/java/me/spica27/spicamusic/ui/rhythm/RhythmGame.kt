@@ -1,6 +1,8 @@
 package me.spica27.spicamusic.ui.rhythm
 
 import android.content.Context
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.VibrationEffect
@@ -48,23 +50,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import me.spica27.spicamusic.App
 import me.spica27.spicamusic.common.entity.Song
 import me.spica27.spicamusic.feature.library.domain.SongUseCases
 import me.spica27.spicamusic.feature.library.domain.rhythm.RhythmChart
-import me.spica27.spicamusic.feature.library.domain.rhythm.RhythmChartGenerator
+import me.spica27.spicamusic.feature.library.domain.rhythm.RhythmNote
 import org.koin.compose.koinInject
 import timber.log.Timber
 import java.io.File
 import kotlin.math.abs
 
 /**
- * 用歌曲的节奏点玩一局：四轨落点、点击判定、连击与计分。
+ * 音乐游戏：跟着歌曲的节奏点敲四条轨道。
  *
- * 谱面优先取已有的波形数据；没有时会现场解码音频生成一份并回写缓存，
- * 只有真的分析不成功才停下来告知用户，不会用固定的假节奏充数。
- * 界面保持安静：游戏中顶部只有连击，落点、命中闪光与震动承担全部反馈，
- * 得分与逐项判定留到结算页。
+ * 谱面从音频波形现场分析得来——用自适应阈值抓局部能量峰，长音会变成需要长按的长条。
+ * 进入游戏时会申请独占音频焦点，正在播放的音乐会自动让路，退出后恢复。
+ * 界面保持安静：游戏中顶部只有连击，落点、命中闪光与震动承担全部反馈，结算时再给明细。
  */
 @Composable
 fun RhythmGameOverlay(song: Song, onClose: () -> Unit) {
@@ -83,9 +83,11 @@ private enum class Judge(val score: Int, val vibrationMs: Long, val vibrationAmp
 }
 
 private const val LANE_COUNT = 4
-private const val FALL_WINDOW_MS = 1600f
+private const val FALL_WINDOW_MS = 1800f
 private const val PERFECT_WINDOW_MS = 90f
-private const val GREAT_WINDOW_MS = 190f
+private const val GREAT_WINDOW_MS = 200f
+private const val MIN_GAP_MS = 110L
+private const val HOLD_MIN_MS = 420L
 
 @Composable
 private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
@@ -95,29 +97,24 @@ private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
 
   var chart by remember(song.mediaStoreId) { mutableStateOf<RhythmChart?>(null) }
   var analyzing by remember(song.mediaStoreId) { mutableStateOf(true) }
-  var analysisFailed by remember(song.mediaStoreId) { mutableStateOf(false) }
   var analysisAttempt by remember(song.mediaStoreId) { mutableIntStateOf(0) }
 
-  // 谱面准备：先用已缓存的波形；没有就现场分析，并回写缓存供下次直接使用。
   LaunchedEffect(song.mediaStoreId, analysisAttempt) {
     analyzing = true
-    analysisFailed = false
     chart = null
-    val analysis =
+    val amplitudes =
       withContext(Dispatchers.IO) {
         val cached = song.waveformData?.split(",")?.mapNotNull { it.trim().toIntOrNull() }.orEmpty()
-        if (cached.isNotEmpty()) return@withContext cached to false
+        if (cached.isNotEmpty()) return@withContext cached
         val extracted = analyseWithAmplituda(context, amplituda, song)
         if (extracted.isNotEmpty()) {
           runCatching {
             songUseCases.updateSongWaveform(song.mediaStoreId, extracted.joinToString(","))
           }.onFailure { Timber.tag("RhythmGame").w(it, "回写波形失败") }
         }
-        extracted to true
+        extracted
       }
-    val amplitudes = analysis.first
     if (amplitudes.isEmpty()) {
-      analysisFailed = true
       analyzing = false
       return@LaunchedEffect
     }
@@ -138,7 +135,7 @@ private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
     }
     return
   }
-  if (readyChart == null) {
+  if (readyChart == null || readyChart.notes.isEmpty()) {
     Box(
       modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
       contentAlignment = Alignment.Center,
@@ -146,7 +143,7 @@ private fun RhythmGameSurface(song: Song, onClose: () -> Unit) {
       Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("没能分析出这首歌的节奏", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
         Text(
-          if (analysisFailed) "这首歌的音频无法解码成波形，可以换一首试试。" else "音频不可读，请确认文件还在。",
+          "这首歌的音频暂时无法解码成波形，可以换一首试试。",
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -182,7 +179,15 @@ private fun RhythmPlay(
   var attempt by remember { mutableIntStateOf(0) }
   var player by remember { mutableStateOf<MediaPlayer?>(null) }
 
+  /** 进入游戏时拿到独占焦点，让正在播放的音乐自动停下；退出时把焦点还回去。 */
+  val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+
   DisposableEffect(song.mediaStoreId, attempt) {
+    val focusRequest =
+      AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+        .setWillPauseWhenDucked(true)
+        .build()
+    runCatching { audioManager?.requestAudioFocus(focusRequest) }
     val mediaPlayer =
       runCatching {
           MediaPlayer().apply {
@@ -195,16 +200,18 @@ private fun RhythmPlay(
     player = mediaPlayer
     onDispose {
       runCatching { mediaPlayer?.release() }
+      runCatching { audioManager?.abandonAudioFocusRequest(focusRequest) }
       player = null
     }
   }
 
   LaunchedEffect(chart, attempt) {
-    val endMs = (notes.lastOrNull()?.timeMs ?: 0L) + 1500L
+    val endMs = (notes.maxOfOrNull { it.timeMs + it.durationMs } ?: 0L) + 1500L
     while (isActive && !finished) {
       positionMs = runCatching { player?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L)
       notes.forEachIndexed { index, note ->
-        if (!consumed[index] && positionMs - note.timeMs > GREAT_WINDOW_MS) {
+        val tailMs = note.timeMs + note.durationMs
+        if (!consumed[index] && positionMs - tailMs > GREAT_WINDOW_MS) {
           consumed[index] = true
           combo = 0
           missCount += 1
@@ -289,16 +296,31 @@ private fun RhythmPlay(
       )
       notes.forEachIndexed { index, note ->
         if (consumed[index]) return@forEachIndexed
-        val deltaMs = note.timeMs - positionMs
-        if (deltaMs > FALL_WINDOW_MS) return@forEachIndexed
-        val y = judgeLineY - deltaMs / FALL_WINDOW_MS * judgeLineY
-        if (y < -80f) return@forEachIndexed
-        drawRoundRect(
-          color = noteColor.copy(alpha = 0.9f),
-          topLeft = Offset(note.lane * laneWidth + laneWidth * 0.12f, y - 13f),
-          size = Size(laneWidth * 0.76f, 26f),
-          cornerRadius = CornerRadius(16f, 16f),
-        )
+        val headDelta = note.timeMs - positionMs
+        val headY = judgeLineY - headDelta / FALL_WINDOW_MS * judgeLineY
+        val laneX = note.lane * laneWidth + laneWidth * 0.12f
+        val noteWidth = laneWidth * 0.76f
+        if (note.durationMs > 0L) {
+          // 长按：从头部一直拉到尾部的长条
+          val tailY = judgeLineY - (headDelta + note.durationMs) / FALL_WINDOW_MS * judgeLineY
+          val top = minOf(headY, tailY) - 13f
+          val bottom = maxOf(headY, tailY) + 13f
+          if (bottom > -80f) {
+            drawRoundRect(
+              color = noteColor.copy(alpha = 0.45f),
+              topLeft = Offset(laneX, top),
+              size = Size(noteWidth, bottom - top),
+              cornerRadius = CornerRadius(16f, 16f),
+            )
+          }
+        } else if (headDelta <= FALL_WINDOW_MS && headY > -80f) {
+          drawRoundRect(
+            color = noteColor.copy(alpha = 0.9f),
+            topLeft = Offset(laneX, headY - 13f),
+            size = Size(noteWidth, 26f),
+            cornerRadius = CornerRadius(16f, 16f),
+          )
+        }
       }
     }
 
@@ -369,7 +391,7 @@ private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: S
       if (source == null) {
         null
       } else {
-        val file = File.createTempFile("rhythm_wave", null, context.cacheDir)
+        val file = File.createTempFile("music_game_wave", null, context.cacheDir)
         source.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
         file
       }
@@ -407,26 +429,65 @@ private fun vibrate(context: Context, judge: Judge) {
   }
 }
 
-/** 把幅度序列变成谱面：波形按整首歌等间隔采样，间隔由时长均分得到。 */
+/**
+ * 把波形变成谱面。
+ *
+ * 阈值不是全局的定值，而是每个位置周边窗口的能量均值乘以系数——这样安静段落里的小鼓点
+ * 也能成音，副歌里的持续器乐也不会把整段铺满音符。峰值后面若能量仍维持在高位，
+ * 就视为长音，生成需要长按的长条；轨道按强弱成对左右分配，保证四条轨道都被用到。
+ */
 private fun buildChart(song: Song, rawAmplitudes: List<Int>): RhythmChart {
-  val max = rawAmplitudes.maxOrNull()?.toFloat() ?: 0f
-  val waveform =
-    if (max <= 0f) {
-      FloatArray(0)
-    } else {
-      FloatArray(rawAmplitudes.size) { index -> (rawAmplitudes[index] / max).coerceIn(0f, 1f) }
-    }
+  val size = rawAmplitudes.size
+  if (size < 8) {
+    return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, emptyList())
+  }
+  val values = FloatArray(size) { rawAmplitudes[it].toFloat().coerceAtLeast(0f) }
+  val max = values.max()
+  if (max <= 0f) {
+    return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, emptyList())
+  }
+  val norm = FloatArray(size) { values[it] / max }
   val intervalMs =
-    if (waveform.isNotEmpty() && song.duration > 0L) {
-      (song.duration / waveform.size).coerceAtLeast(1L)
-    } else {
-      20L
+    if (song.duration > 0L) (song.duration / size).coerceAtLeast(1L) else 20L
+
+  val notes = ArrayList<RhythmNote>()
+  val window = 40
+  var index = 1
+  var lastAcceptedMs = Long.MIN_VALUE / 2
+  var seed = 0
+
+  while (index < size - 1) {
+    val from = (index - window).coerceAtLeast(0)
+    val to = (index + window).coerceAtMost(size - 1)
+    var sum = 0f
+    for (i in from..to) sum += norm[i]
+    val localMean = sum / (to - from + 1)
+    val threshold = (localMean * 1.4f).coerceAtLeast(0.18f)
+    val strength = norm[index]
+    val isPeak = strength >= threshold && strength >= norm[index - 1] && strength >= norm[index + 1]
+    val timeMs = index * intervalMs
+
+    if (isPeak && timeMs - lastAcceptedMs >= MIN_GAP_MS) {
+      // 峰值之后能量仍在均值附近 → 长音
+      var tail = index
+      while (tail + 1 < size && norm[tail + 1] >= localMean * 0.85f) tail++
+      val holdMs = (tail - index) * intervalMs
+      val durationMs = if (holdMs >= HOLD_MIN_MS) holdMs.coerceAtMost(4000L) else 0L
+      val left = seed % 2 == 0
+      val lane =
+        when {
+          strength >= 0.8f -> if (left) 0 else LANE_COUNT - 1
+          strength >= 0.55f -> if (left) 1 else LANE_COUNT - 2
+          else -> if (left) LANE_COUNT / 2 else LANE_COUNT / 2 - 1
+        }.coerceIn(0, LANE_COUNT - 1)
+      notes += RhythmNote(timeMs = timeMs, lane = lane, strength = strength, durationMs = durationMs)
+      lastAcceptedMs = timeMs
+      seed++
+      index = (tail + 1).coerceAtLeast(index + 1)
+      continue
     }
-  return RhythmChartGenerator.generate(
-    title = song.displayName,
-    artist = song.artist,
-    durationMs = song.duration,
-    waveform = waveform,
-    intervalMs = intervalMs,
-  )
+    index++
+  }
+
+  return RhythmChart(song.displayName, song.artist, song.duration, LANE_COUNT, notes)
 }

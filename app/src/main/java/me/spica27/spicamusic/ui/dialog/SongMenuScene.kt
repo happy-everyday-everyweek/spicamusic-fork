@@ -381,18 +381,10 @@ private fun SongMenuContent(
                 )
             }
             ControlItem(
-                title = "节奏游戏",
-                subtitle = "用这首歌的节奏点玩一局（四轨落点）",
+                title = "音乐游戏",
+                subtitle = "跟着这首歌的节奏敲四条轨道",
                 icon = Icons.Default.GraphicEq,
                 onClick = { showRhythmGame.value = true },
-            )
-            ControlItem(
-                title = "导出音游谱面",
-                subtitle = "把节奏点保存成 JSON，方便导入其它音游",
-                icon = Icons.Default.GraphicEq,
-                onClick = {
-                    me.spica27.spicamusic.ui.rhythm.RhythmChartExporter.export(rhythmContext, song)
-                },
             )
             ControlItem(
                 title = stringResource(R.string.view_album),

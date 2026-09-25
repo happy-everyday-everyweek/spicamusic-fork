@@ -5,6 +5,8 @@ data class RhythmNote(
   val timeMs: Long,
   val lane: Int,
   val strength: Float,
+  /** 长按音符的持续时长；0 表示单点。 */
+  val durationMs: Long = 0L,
 )
 
 /** 一份可导出的音游谱面。 */
