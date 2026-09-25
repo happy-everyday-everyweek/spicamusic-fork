@@ -985,7 +985,8 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
 private fun ScanScopeSettingsSection(modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { me.spica27.spicamusic.online.settings.ScanScopeStore(context) }
-    val executor = remember { me.spica27.spicamusic.ui.migration.LocalMigrationExecutor(context) }
+    val songUseCases = org.koin.compose.koinInject<me.spica27.spicamusic.feature.library.domain.SongUseCases>()
+    val executor = remember { me.spica27.spicamusic.ui.migration.LocalMigrationExecutor(context, songUseCases) }
 
     var whitelistEnabled by remember {
         mutableStateOf(store.mode() == me.spica27.spicamusic.feature.library.domain.scope.ScanMode.OnlySelectedDirectories)
@@ -1020,7 +1021,11 @@ private fun ScanScopeSettingsSection(modifier: Modifier = Modifier) {
             executor.migrate(java.io.File(target), moveInsteadOfCopy = false) { copied, total ->
                 status = "正在迁移：$copied/$total"
             }
-        status = "迁移完成：复制 ${outcome.copied} 首，跳过 ${outcome.skipped} 首，失败 ${outcome.failed} 首"
+        status =
+                    buildString {
+                        append("迁移完成：复制 ${outcome.copied} 首，跳过 ${outcome.skipped} 首，失败 ${outcome.failed} 首")
+                        outcome.firstError?.let { reason -> append("（首个失败原因：").append(reason).append("）") }
+                    }
         store.setMigrationStatus(status)
         migrating = false
         migrateRequest = null
