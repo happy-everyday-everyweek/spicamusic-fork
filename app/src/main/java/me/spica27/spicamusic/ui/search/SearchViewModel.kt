@@ -119,25 +119,18 @@ class SearchViewModel(
 
     private var onlineJob: Job? = null
 
-    init {
-        // 本地搜不到时自动走在线搜索；与本地有结果时的手动入口共用同一实现。
-        viewModelScope.launch {
-            _searchKeyword
-                .debounce(500)
-                .collectLatest { keyword ->
-                    if (keyword.isBlank()) return@collectLatest
-                    if (onlineSource == null) return@collectLatest
-                    val localCount = runCatching { songRepository.getFilteredMediaStoreIds(keyword).size }.getOrDefault(0)
-                    if (localCount == 0) searchOnlineMore(keyword)
-                }
-        }
-    }
+    /** 当前在线结果对应的关键词：同一个关键词不重复发起，换词时自动重开一轮。 */
+    private var onlineQuery: String = ""
 
     /** 手动“使用在线搜索搜索更多”，也可以在本地无结果时自动调用。 */
     fun searchOnlineMore(keyword: String = _searchKeyword.value) {
         val source = onlineSource ?: return
         if (keyword.isBlank()) return
+        val current = _onlineState.value
+        // 同一关键词已经在搜索或已有结果时不重复发起（自动触发与手动入口共用这一条）。
+        if (onlineQuery == keyword && (current.loading || current.hasResults)) return
         onlineJob?.cancel()
+        onlineQuery = keyword
         _onlineState.value = OnlineSearchUiState(query = keyword, loading = true)
         onlineJob =
             viewModelScope.launch {

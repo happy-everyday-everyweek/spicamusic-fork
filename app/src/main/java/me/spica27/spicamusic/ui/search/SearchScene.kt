@@ -239,6 +239,12 @@ fun SearchScreen() {
                                 query = searchKey,
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            // 本地没搜到：自动转在线搜索，同一关键词只发起一次。
+                            androidx.compose.runtime.LaunchedEffect(searchKey) {
+                                if (searchKey.isNotBlank()) {
+                                    searchViewModel.searchOnlineMore(searchKey)
+                                }
+                            }
                             OnlineResultsSection(
                                 state = onlineState,
                                 progressOf = { track -> searchViewModel.onlineProgress(track) },
@@ -258,7 +264,7 @@ fun SearchScreen() {
                                 onMore = { song -> backStack.add(SongMenuRoute(song)) },
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
-                            OnlineSearchMoreRow(onClick = { searchViewModel.searchOnlineMore() })
+                            OnlineSearchMoreRow(onClick = { searchViewModel.searchOnlineMore(searchKey) })
                             OnlineResultsSection(
                                 state = onlineState,
                                 progressOf = { track -> searchViewModel.onlineProgress(track) },
@@ -508,7 +514,7 @@ private fun SearchResultList(
 
 /** 分组字母头：主题色圆角小标签 + 发丝线 */
 @Composable
-private fun SearchGroupHeader(
+internal fun SearchGroupHeader(
     title: String,
     modifier: Modifier = Modifier,
 ) {

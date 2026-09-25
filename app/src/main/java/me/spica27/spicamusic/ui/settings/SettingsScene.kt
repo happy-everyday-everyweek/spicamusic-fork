@@ -52,6 +52,12 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -211,14 +217,20 @@ fun SettingsScreen() {
             }
 
             item(key = "settings_online_download") {
-                OnlineDownloadSettingsCard(
-                    modifier = Modifier.entrance(order = 6, play = !entrancePlayed),
+                OnlineDownloadSettingsSection(
+                    modifier =
+                        Modifier
+                            .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
+                            .entrance(order = 6, play = !entrancePlayed),
                 )
             }
 
             item(key = "settings_scan_scope") {
-                ScanScopeSettingsCard(
-                    modifier = Modifier.entrance(order = 7, play = !entrancePlayed),
+                ScanScopeSettingsSection(
+                    modifier =
+                        Modifier
+                            .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
+                            .entrance(order = 7, play = !entrancePlayed),
                 )
             }
 
@@ -820,6 +832,275 @@ private fun OptionCard(
         }
     }
 }
+
+// -- 在线音源与曲库范围：沿用设置页统一的卡片与行样式 --
+
+@Composable
+private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settings = remember { me.spica27.spicamusic.online.settings.OnlineSettings(context) }
+    var expandedRowKey by remember { mutableStateOf<String?>(null) }
+    var qualityKey by remember { mutableStateOf(settings.quality().key) }
+    var concurrency by remember { mutableStateOf(settings.concurrency()) }
+    var nameStyle by remember { mutableStateOf(settings.fileNameStyle()) }
+    var wifiOnly by remember { mutableStateOf(settings.wifiOnly()) }
+
+    val qualityOptions =
+        remember {
+            kotlinx.collections.immutable.persistentListOf(
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.OnlineQuality.Q128.key,
+                    label = "128k",
+                    description = "体积最小",
+                    icon = Icons.Default.MusicNote,
+                ),
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.OnlineQuality.Q320.key,
+                    label = "320k",
+                    description = "默认档位",
+                    icon = Icons.Default.LibraryMusic,
+                ),
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.OnlineQuality.FLAC.key,
+                    label = "无损",
+                    description = "体积较大",
+                    icon = Icons.Default.Waves,
+                ),
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.OnlineQuality.FLAC24.key,
+                    label = "Hi-Res",
+                    description = "最高规格",
+                    icon = Icons.Default.Layers,
+                ),
+            )
+        }
+    val concurrencyOptions =
+        remember {
+            kotlinx.collections.immutable.persistentListOf(
+                *(1..8)
+                    .map { count ->
+                        SettingsOption(
+                            value = "$count",
+                            label = "$count 首",
+                            description = "同时下载 $count 首",
+                            icon = Icons.Default.Tune,
+                        )
+                    }.toTypedArray(),
+            )
+        }
+    val nameStyleOptions =
+        remember {
+            kotlinx.collections.immutable.persistentListOf(
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.settings.FileNameStyle.TITLE_ARTIST.name,
+                    label = "歌名 - 歌手",
+                    description = "默认",
+                    icon = Icons.Default.MusicNote,
+                ),
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.settings.FileNameStyle.ARTIST_TITLE.name,
+                    label = "歌手 - 歌名",
+                    description = "便于按歌手归拢",
+                    icon = Icons.Default.MusicNote,
+                ),
+                SettingsOption(
+                    value = me.spica27.spicamusic.online.settings.FileNameStyle.TITLE_ONLY.name,
+                    label = "歌名",
+                    description = "最简洁",
+                    icon = Icons.Default.MusicNote,
+                ),
+            )
+        }
+
+    SettingsSectionCard(
+        title = "在线下载",
+        subtitle = "默认 320k，解析失败自动降档重试；下载完成的文件自动进入曲库。",
+        modifier = modifier,
+    ) {
+        InlineSelectRow(
+            rowKey = "online_quality",
+            title = "下载音质",
+            summary = "在线音源使用的音质档位",
+            icon = Icons.Default.LibraryMusic,
+            options = qualityOptions,
+            currentValue = qualityKey,
+            expandedKey = expandedRowKey,
+            onExpandChange = { expandedRowKey = it },
+            onValueChange = { value ->
+                val picked = me.spica27.spicamusic.online.OnlineQuality.fromKey(value)
+                qualityKey = picked.key
+                settings.setQuality(picked)
+            },
+        )
+        SettingsItemDivider()
+        InlineSelectRow(
+            rowKey = "online_concurrency",
+            title = "同时下载数量",
+            summary = "批量下载时的并发数",
+            icon = Icons.Default.Tune,
+            options = concurrencyOptions,
+            currentValue = "$concurrency",
+            expandedKey = expandedRowKey,
+            onExpandChange = { expandedRowKey = it },
+            onValueChange = { value ->
+                value.toIntOrNull()?.let { count ->
+                    concurrency = count
+                    settings.setConcurrency(count)
+                }
+            },
+        )
+        SettingsItemDivider()
+        InlineSelectRow(
+            rowKey = "online_name_style",
+            title = "文件名",
+            summary = "下载文件保存时的命名方式",
+            icon = Icons.Default.MusicNote,
+            options = nameStyleOptions,
+            currentValue = nameStyle.name,
+            expandedKey = expandedRowKey,
+            onExpandChange = { expandedRowKey = it },
+            onValueChange = { value ->
+                me.spica27.spicamusic.online.settings.FileNameStyle.entries
+                    .firstOrNull { it.name == value }
+                    ?.let { style ->
+                        nameStyle = style
+                        settings.setFileNameStyle(style)
+                    }
+            },
+        )
+        SettingsItemDivider()
+        SwitchRow(
+            title = "仅 Wi-Fi 下载",
+            summary = "移动网络下不自动下载",
+            icon = Icons.Default.Wifi,
+            checked = wifiOnly,
+            onCheckedChange = { enabled ->
+                wifiOnly = enabled
+                settings.setWifiOnly(enabled)
+            },
+        )
+    }
+}
+
+@Composable
+private fun ScanScopeSettingsSection(modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = remember { me.spica27.spicamusic.online.settings.ScanScopeStore(context) }
+    val executor = remember { me.spica27.spicamusic.ui.migration.LocalMigrationExecutor(context) }
+
+    var whitelistEnabled by remember {
+        mutableStateOf(store.mode() == me.spica27.spicamusic.feature.library.domain.scope.ScanMode.OnlySelectedDirectories)
+    }
+    var paths by remember { mutableStateOf(store.whitelistPaths()) }
+    var migrating by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf(store.migrationStatus()) }
+    var migrateRequest by remember { mutableStateOf<String?>(null) }
+
+    val picker =
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+        ) { uri ->
+            if (uri != null) {
+                val realPath = resolveScanDirectoryPath(uri)
+                if (realPath != null) {
+                    store.addWhitelistPath(realPath)
+                    paths = store.whitelistPaths()
+                    whitelistEnabled = true
+                    status = "已添加目录：$realPath"
+                } else {
+                    status = "这个目录无法解析为本地路径，请换一个（例如内部存储下的 Music）"
+                }
+                store.setMigrationStatus(status)
+            }
+        }
+
+    androidx.compose.runtime.LaunchedEffect(migrateRequest) {
+        val target = migrateRequest ?: return@LaunchedEffect
+        migrating = true
+        val outcome =
+            executor.migrate(java.io.File(target), moveInsteadOfCopy = false) { copied, total ->
+                status = "正在迁移：$copied/$total"
+            }
+        status = "迁移完成：复制 ${outcome.copied} 首，跳过 ${outcome.skipped} 首，失败 ${outcome.failed} 首"
+        store.setMigrationStatus(status)
+        migrating = false
+        migrateRequest = null
+    }
+
+    SettingsSectionCard(
+        title = "扫描范围",
+        subtitle = "开启后只收录白名单目录下的音频，系统媒体库的增量同步同样遵守该范围。",
+        modifier = modifier,
+    ) {
+        SwitchRow(
+            title = "只扫描指定目录",
+            summary =
+                if (paths.isEmpty()) {
+                    "尚未添加目录，开启后曲库将为空"
+                } else {
+                    "已添加 ${paths.size} 个目录"
+                },
+            icon = Icons.Default.Folder,
+            checked = whitelistEnabled,
+            onCheckedChange = { enabled ->
+                whitelistEnabled = enabled
+                store.setMode(
+                    if (enabled) {
+                        me.spica27.spicamusic.feature.library.domain.scope.ScanMode.OnlySelectedDirectories
+                    } else {
+                        me.spica27.spicamusic.feature.library.domain.scope.ScanMode.AllDirectories
+                    },
+                )
+            },
+        )
+        SettingsItemDivider()
+        NavigationRow(
+            title = "添加目录",
+            summary = "从系统文件选择器里挑一个目录",
+            icon = Icons.Default.Folder,
+            onClick = { picker.launch(null) },
+        )
+        paths.forEach { path ->
+            SettingsItemDivider()
+            NavigationRow(
+                title = path,
+                summary = "点击移除这个目录",
+                icon = Icons.Default.Delete,
+                onClick = {
+                    store.removeWhitelistPath(path)
+                    paths = store.whitelistPaths()
+                },
+            )
+        }
+        SettingsItemDivider()
+        NavigationRow(
+            title = if (migrating) "正在迁移…" else "迁移到白名单目录",
+            summary = status ?: "把已扫描到、且不在该目录下的音乐复制过去",
+            icon = Icons.Default.Download,
+            onClick = {
+                val target = paths.firstOrNull() ?: return@NavigationRow
+                if (!migrating) migrateRequest = target
+            },
+        )
+    }
+}
+
+/** 把 SAF 目录树 URI 解析成绝对路径，失败返回 null。 */
+private fun resolveScanDirectoryPath(treeUri: android.net.Uri): String? =
+    runCatching {
+        val documentId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+        val parts = documentId.split(":", limit = 2)
+        if (parts.size < 2) return@runCatching null
+        val volume = parts[0]
+        val relative = parts[1]
+        val base =
+            if (volume.equals("primary", ignoreCase = true)) {
+                android.os.Environment.getExternalStorageDirectory().absolutePath
+            } else {
+                "/storage/$volume"
+            }
+        if (relative.isBlank()) base else "$base/$relative"
+    }.getOrNull()
 
 // -- 选项配置：每个选项配一个直观的图标 + 一句话说明 --
 

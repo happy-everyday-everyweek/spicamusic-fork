@@ -133,6 +133,8 @@ object AppModule {
             viewModel {
                 SearchViewModel(
                     songRepository = get<SongUseCases>(),
+                    onlineSource = get<me.spica27.spicamusic.online.OnlineSourcePort>(),
+                    onlineDownloader = get<me.spica27.spicamusic.online.download.OnlineDownloader>(),
                 )
             }
 
