@@ -159,6 +159,12 @@ val ossLibraries: List<OssLibrary> =
             "https://github.com/Kyant0/taglib",
         ),
         OssLibrary(
+            "QuickJS (quickjs-android wrapper)",
+            "wang.harlon.quickjs:wrapper-android",
+            "MIT",
+            "https://github.com/HarlonWang/quickjs-android",
+        ),
+        OssLibrary(
             "PFFFT",
             "vendored native source: pffft 1.1.0",
             "BSD-3-Clause",
