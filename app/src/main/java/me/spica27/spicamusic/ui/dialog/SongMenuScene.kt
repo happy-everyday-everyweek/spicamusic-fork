@@ -373,9 +373,22 @@ private fun SongMenuContent(
                 onClick = onIgnoreSong,
             )
             val rhythmContext = androidx.compose.ui.platform.LocalContext.current
+            val showRhythmGame = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            if (showRhythmGame.value) {
+                me.spica27.spicamusic.ui.rhythm.RhythmGameOverlay(
+                    song = song,
+                    onClose = { showRhythmGame.value = false },
+                )
+            }
             ControlItem(
-                title = "生成音游谱面",
-                subtitle = "把这首歌的节奏点导出成音游谱面（JSON）",
+                title = "节奏游戏",
+                subtitle = "用这首歌的节奏点玩一局（四轨落点）",
+                icon = Icons.Default.GraphicEq,
+                onClick = { showRhythmGame.value = true },
+            )
+            ControlItem(
+                title = "导出音游谱面",
+                subtitle = "把节奏点保存成 JSON，方便导入其它音游",
                 icon = Icons.Default.GraphicEq,
                 onClick = {
                     me.spica27.spicamusic.ui.rhythm.RhythmChartExporter.export(rhythmContext, song)
