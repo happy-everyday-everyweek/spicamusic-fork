@@ -4,7 +4,7 @@
 
 **现代化 Android 音乐播放器 | Jetpack Compose + Media3 + Koin + navkit**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-29+-green.svg)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3+-purple.svg)](https://kotlinlang.org)
 [![GitHub release](https://img.shields.io/github/v/release/yangSpica27/SPICaMusic_Android?include_prereleases)](https://github.com/yangSpica27/SPICaMusic_Android/releases)
@@ -121,7 +121,7 @@ cd SPICaMusic_Android
 
 ## ⚠️ 注意事项
 
-本仓库源码遵循 [MIT 协议](LICENSE)。
+本分支以 [GNU GPL v3.0](LICENSE) 发布；上游 SpicaMusic 原以 MIT 许可发布。
 
 部分音频格式的软解码依赖 FFmpeg，其许可条款与本项目不同。项目默认使用
 [jellyfin-androidx-media](https://github.com/jellyfin/jellyfin-androidx-media/releases)
@@ -145,29 +145,8 @@ cd SPICaMusic_Android
 
 ## 📄 License
 
-```
-MIT License
+本分支以 [GNU GPL v3.0](LICENSE) 发布。原始 SpicaMusic 由 杨为智 以 MIT 许可发布，本分支的修改与新增同样受 GPL-3.0 覆盖；内置在线音源参考洛雪音乐（Apache-2.0）实现，第三方依赖许可见应用内「开源许可证」页。
 
-Copyright (c) 2024 杨为智
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
 
 ---
 

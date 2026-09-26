@@ -643,7 +643,7 @@
   <string name="about_open_source">開源授權</string>
   <string name="about_open_source_subtitle">本應用使用的第三方函式庫</string>
   <string name="about_app_license">應用授權</string>
-  <string name="about_app_license_subtitle">基於 MIT 授權條款發布</string>
+  <string name="about_app_license_subtitle">基於 GNU GPL v3.0 授權條款發布</string>
   <string name="about_privacy">隱私政策</string>
   <string name="about_privacy_subtitle">本應用如何處理你的資料</string>
   <string name="about_project_home">專案首頁</string>

@@ -645,7 +645,7 @@
   <string name="about_open_source">开源许可证</string>
   <string name="about_open_source_subtitle">本应用使用的第三方库</string>
   <string name="about_app_license">应用许可证</string>
-  <string name="about_app_license_subtitle">基于 MIT 许可证发布</string>
+  <string name="about_app_license_subtitle">基于 GNU GPL v3.0 发布</string>
   <string name="about_privacy">隐私政策</string>
   <string name="about_privacy_subtitle">本应用如何处理你的数据</string>
   <string name="about_project_home">项目主页</string>

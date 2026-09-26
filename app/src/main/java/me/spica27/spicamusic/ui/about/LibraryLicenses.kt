@@ -165,6 +165,18 @@ val ossLibraries: List<OssLibrary> =
             "https://github.com/HarlonWang/quickjs-android",
         ),
         OssLibrary(
+            "LX Music（在线音源参考实现）",
+            "vendored source: lx-music musicSdk",
+            "Apache-2.0",
+            "https://github.com/lyswhut/lx-music-desktop",
+        ),
+        OssLibrary(
+            "SpicaMusic（上游项目）",
+            "yangSpica27/SPICaMusic_Android",
+            "MIT",
+            "https://github.com/yangSpica27/SPICaMusic_Android",
+        ),
+        OssLibrary(
             "PFFFT",
             "vendored native source: pffft 1.1.0",
             "BSD-3-Clause",

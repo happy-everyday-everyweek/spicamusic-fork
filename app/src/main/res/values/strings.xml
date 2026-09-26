@@ -645,7 +645,7 @@
   <string name="about_open_source">Open-source licenses</string>
   <string name="about_open_source_subtitle">Third-party libraries used in this app</string>
   <string name="about_app_license">App license</string>
-  <string name="about_app_license_subtitle">Released under the MIT License</string>
+  <string name="about_app_license_subtitle">Released under the GNU GPL v3.0</string>
   <string name="about_privacy">Privacy policy</string>
   <string name="about_privacy_subtitle">How this app handles your data</string>
   <string name="about_project_home">Project homepage</string>
