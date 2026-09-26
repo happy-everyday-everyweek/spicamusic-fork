@@ -27,7 +27,8 @@ object OnlinePlatforms {
   const val BILIBILI = "bilibili"
   const val YTMUSIC = "ytmusic"
 
-  val all: List<String> = listOf(KW, KG, TX, WY, MG, BD, XM, BILIBILI, YTMUSIC)
+  // 与洛雪移动版对齐：百度接口已停用（上游注释）、虾米不在 SDK 内。
+  val all: List<String> = listOf(KW, KG, TX, WY, MG, BILIBILI, YTMUSIC)
 
   fun displayName(platform: String): String = when (platform) {
     KW -> "酷我音乐"
