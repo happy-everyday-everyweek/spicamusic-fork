@@ -15,6 +15,13 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.ui.NavDisplay
 import me.spica27.spicamusic.common.entity.ThemeColorStyle
 import me.spica27.spicamusic.core.preferences.PreferencesManager
@@ -50,8 +57,32 @@ fun AppScaffold() {
             .getString(PreferencesManager.Keys.THEME_COLOR_STYLE, ThemeColorStyle.Textured.value)
             .collectAsStateWithLifecycle(ThemeColorStyle.Textured.value)
 
+    val colorSourceValue by
+        preferencesManager
+            .getString(
+                PreferencesManager.Keys.THEME_COLOR_SOURCE,
+                me.spica27.spicamusic.common.entity.ColorSource.Cover.value,
+            ).collectAsStateWithLifecycle(me.spica27.spicamusic.common.entity.ColorSource.Cover.value)
+
     val playerViewModel: PlayerViewModel = koinActivityViewModel()
-    val color by playerViewModel.playerThemeColor.collectAsStateWithLifecycle()
+    val coverColor by playerViewModel.playerThemeColor.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val dynamicSeed =
+        remember(context, isDarkMode) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                dynamicSeedColor(context, isDarkMode)
+            } else {
+                null
+            }
+        }
+    val color =
+        if (me.spica27.spicamusic.common.entity.ColorSource.fromString(colorSourceValue) ==
+            me.spica27.spicamusic.common.entity.ColorSource.Dynamic
+        ) {
+            dynamicSeed ?: coverColor
+        } else {
+            coverColor
+        }
     val keepScreenOn by
         preferencesManager
             .getBoolean(PreferencesManager.Keys.KEEP_SCREEN_ON)
@@ -107,13 +138,20 @@ fun AppScaffold() {
 @Composable
 private fun KeepScreenOnEffect(enabled: Boolean) {
     val view = LocalView.current
-
     DisposableEffect(view, enabled) {
         val previous = view.keepScreenOn
         view.keepScreenOn = enabled
-
         onDispose {
             view.keepScreenOn = previous
         }
     }
 }
+
+/** 动态取色的种子色：Android 12 及以上从系统动态色取主色，低于该版本由调用方回退到封面取色。 */
+@RequiresApi(Build.VERSION_CODES.S)
+private fun dynamicSeedColor(context: Context, dark: Boolean): Color =
+    if (dark) {
+        dynamicDarkColorScheme(context).primary
+    } else {
+        dynamicLightColorScheme(context).primary
+    }

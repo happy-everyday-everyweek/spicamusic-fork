@@ -685,6 +685,12 @@
   <string name="settings_section_playback_subtitle">播放音乐时的行为</string>
   <string name="settings_color_style">配色方式</string>
   <string name="settings_color_style_subtitle">主题色的生成方式</string>
+  <string name="settings_color_source">取色方式</string>
+  <string name="settings_color_source_subtitle">主题色的来源</string>
+  <string name="color_source_dynamic">动态取色</string>
+  <string name="color_source_dynamic_desc">跟随系统壁纸的动态取色（Android 12 及以上）</string>
+  <string name="color_source_cover">封面取色</string>
+  <string name="color_source_cover_desc">从当前播放歌曲的封面提取主色</string>
   <string name="settings_player_background">播放页背景</string>
   <string name="settings_player_background_subtitle">播放页面封面后的背景效果</string>
   <string name="settings_cover_tap_effect">点击封面效果</string>

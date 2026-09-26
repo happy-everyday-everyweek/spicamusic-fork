@@ -11,6 +11,7 @@ class SettingsUseCases(
         val DARK_MODE = PreferencesManager.Keys.DARK_MODE
         val LIQUID_GLASS_ENABLED = PreferencesManager.Keys.LIQUID_GLASS_ENABLED
         val THEME_COLOR_STYLE = PreferencesManager.Keys.THEME_COLOR_STYLE
+        val THEME_COLOR_SOURCE = PreferencesManager.Keys.THEME_COLOR_SOURCE
         val KEEP_SCREEN_ON = PreferencesManager.Keys.KEEP_SCREEN_ON
         val DYNAMIC_SPECTRUM_BACKGROUND = PreferencesManager.Keys.DYNAMIC_SPECTRUM_BACKGROUND
         val DYNAMIC_COVER_TYPE = PreferencesManager.Keys.DYNAMIC_COVER_TYPE

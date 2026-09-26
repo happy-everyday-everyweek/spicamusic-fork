@@ -57,6 +57,24 @@ class SettingsViewModel(
         }
     }
 
+    // 取色方式：动态取色 / 封面取色
+    val colorSource =
+        settingsUseCases
+            .getString(
+                SettingsUseCases.Keys.THEME_COLOR_SOURCE,
+                me.spica27.spicamusic.common.entity.ColorSource.Cover.value,
+            ).stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                me.spica27.spicamusic.common.entity.ColorSource.Cover.value,
+            )
+
+    fun setColorSource(value: String) {
+        viewModelScope.launch {
+            settingsUseCases.setString(SettingsUseCases.Keys.THEME_COLOR_SOURCE, value)
+        }
+    }
+
     // 屏幕常亮
     val keepScreenOn =
         settingsUseCases

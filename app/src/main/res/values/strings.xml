@@ -685,6 +685,12 @@
   <string name="settings_section_playback_subtitle">Behavior while music is playing</string>
   <string name="settings_color_style">Color Style</string>
   <string name="settings_color_style_subtitle">How the theme colors are generated</string>
+  <string name="settings_color_source">Color Source</string>
+  <string name="settings_color_source_subtitle">Where the theme color comes from</string>
+  <string name="color_source_dynamic">Dynamic</string>
+  <string name="color_source_dynamic_desc">Follow the system wallpaper dynamic color (Android 12+)</string>
+  <string name="color_source_cover">Album art</string>
+  <string name="color_source_cover_desc">Extract the dominant color from the playing song cover</string>
   <string name="settings_player_background">Player Background</string>
   <string name="settings_player_background_subtitle">Backdrop behind the now-playing screen</string>
   <string name="settings_cover_tap_effect">Cover Tap Effect</string>
