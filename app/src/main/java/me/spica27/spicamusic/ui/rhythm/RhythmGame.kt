@@ -113,7 +113,7 @@ private enum class Judge(val score: Int, val vibrationMs: Long, val vibrationAmp
   Miss(0, 34L, 255),
 }
 
-private const val LANE_COUNT = 4
+private const val HIT_TOLERANCE = 0.16f
 private const val FALL_WINDOW_MS = 1800f
 private const val PERFECT_WINDOW_MS = 90f
 private const val GREAT_WINDOW_MS = 200f
@@ -202,9 +202,12 @@ private fun RhythmPlay(
   val notes = chart.notes
   val totalNotes = notes.size
   val consumed = remember(chart) { mutableStateListOf<Boolean>().apply { repeat(totalNotes) { add(false) } } }
-  val laneFlash = remember(chart) { mutableStateListOf<Float>().apply { repeat(LANE_COUNT) { add(0f) } } }
+  /** 命中闪光：记录发生位置（0..1 横向比例）与亮度，自由落点没有固定轨道。 */
+  var flashX by remember(chart) { mutableStateOf(-1f) }
+  var flashAlpha by remember(chart) { mutableStateOf(0f) }
   /** 失败闪光：与命中闪光分开配色，让“没按住”一眼可辨。 */
-  val missFlash = remember(chart) { mutableStateListOf<Float>().apply { repeat(LANE_COUNT) { add(0f) } } }
+  var missX by remember(chart) { mutableStateOf(-1f) }
+  var missAlpha by remember(chart) { mutableStateOf(0f) }
   /** 当前按住的是哪一条音符，用于按下高亮。 */
   var pressingIndex by remember(chart) { mutableIntStateOf(-1) }
 
@@ -262,17 +265,14 @@ private fun RhythmPlay(
           vibrate(context, Judge.Miss)
         }
       }
-      for (lane in 0 until LANE_COUNT) {
-        if (laneFlash[lane] > 0f) laneFlash[lane] = (laneFlash[lane] - 0.07f).coerceAtLeast(0f)
-        if (missFlash[lane] > 0f) missFlash[lane] = (missFlash[lane] - 0.07f).coerceAtLeast(0f)
-      }
+      if (flashAlpha > 0f) flashAlpha = (flashAlpha - 0.07f).coerceAtLeast(0f)
+      if (missAlpha > 0f) missAlpha = (missAlpha - 0.07f).coerceAtLeast(0f)
       if (positionMs > endMs && endMs > 1500L) finished = true
       delay(16)
     }
   }
 
   val surfaceColor = MaterialTheme.colorScheme.surface
-  val laneColor = MaterialTheme.colorScheme.surfaceContainerHigh
   val noteColor = MaterialTheme.colorScheme.primary
   val accentColor = MaterialTheme.colorScheme.tertiary
   val errorColor = MaterialTheme.colorScheme.error
@@ -288,13 +288,15 @@ private fun RhythmPlay(
           if (finished || paused) return@pointerInput
           awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            val lane = ((down.position.x / (size.width / LANE_COUNT)).toInt()).coerceIn(0, LANE_COUNT - 1)
+            // 自由落点：按触点的横向位置就近取音符，不再有固定轨道。
+            val xFrac = (down.position.x / size.width).coerceIn(0f, 1f)
             val candidate =
               notes.indices
-                .filter { !consumed[it] && notes[it].lane == lane }
+                .filter { !consumed[it] && abs(notes[it].lane - xFrac) <= HIT_TOLERANCE }
                 .minByOrNull { abs(notes[it].timeMs - positionMs) }
-            // 按下立刻有反馈：轨道亮起；若是长条，判定线附近持续高亮直到松手。
-            laneFlash[lane] = 0.6f
+            // 按下立刻有反馈：触点亮起；若是长条，判定线附近持续高亮直到松手。
+            flashX = xFrac
+            flashAlpha = 0.6f
             pressingIndex = candidate ?: -1
             val pressedAt = System.currentTimeMillis()
             val up = waitForUpOrCancellation()
@@ -312,7 +314,8 @@ private fun RhythmPlay(
                 consumed[index] = true
                 combo = 0
                 missCount += 1
-                missFlash[lane] = 1f
+                missX = xFrac
+                missAlpha = 1f
                 vibrate(context, Judge.Miss)
                 return@awaitEachGesture
               }
@@ -327,55 +330,46 @@ private fun RhythmPlay(
             combo += 1
             bestCombo = maxOf(bestCombo, combo)
             score += judge.score + combo * 2
-            laneFlash[lane] = 1f
+            flashX = notes[index].lane
+            flashAlpha = 1f
             vibrate(context, judge)
           }
         },
   ) {
     Canvas(modifier = Modifier.fillMaxSize()) {
-      val laneWidth = size.width / LANE_COUNT
       val judgeLineY = size.height * 0.82f
-      for (lane in 0 until LANE_COUNT) {
+      val noteWidth = (size.width * 0.08f).coerceIn(20f, 64f)
+      val noteX = { pos: Float -> pos * (size.width - noteWidth) }
+      if (flashAlpha > 0f) {
         drawRect(
-          color = laneColor.copy(alpha = if (lane % 2 == 0) 0.32f else 0.5f),
-          topLeft = Offset(lane * laneWidth, 0f),
-          size = Size(laneWidth, size.height),
+          color = accentColor.copy(alpha = 0.10f * flashAlpha),
+          topLeft = Offset(noteX(flashX) - noteWidth * 0.5f, 0f),
+          size = Size(noteWidth * 2f, judgeLineY),
+        )
+        drawRect(
+          color = accentColor.copy(alpha = 0.9f * flashAlpha),
+          topLeft = Offset(noteX(flashX) - noteWidth * 0.5f, judgeLineY - 5f),
+          size = Size(noteWidth * 2f, 10f),
         )
       }
-      for (lane in 0 until LANE_COUNT) {
-        val flash = laneFlash[lane]
-        if (flash <= 0f) continue
+      if (missAlpha > 0f) {
         drawRect(
-          color = accentColor.copy(alpha = 0.22f * flash),
-          topLeft = Offset(lane * laneWidth, 0f),
-          size = Size(laneWidth, judgeLineY),
+          color = errorColor.copy(alpha = 0.14f * missAlpha),
+          topLeft = Offset(noteX(missX) - noteWidth * 0.5f, 0f),
+          size = Size(noteWidth * 2f, judgeLineY),
         )
         drawRect(
-          color = accentColor.copy(alpha = 0.9f * flash),
-          topLeft = Offset(lane * laneWidth, judgeLineY - 5f),
-          size = Size(laneWidth, 10f),
-        )
-      }
-      for (lane in 0 until LANE_COUNT) {
-        val miss = missFlash[lane]
-        if (miss <= 0f) continue
-        drawRect(
-          color = errorColor.copy(alpha = 0.26f * miss),
-          topLeft = Offset(lane * laneWidth, 0f),
-          size = Size(laneWidth, judgeLineY),
-        )
-        drawRect(
-          color = errorColor.copy(alpha = 0.95f * miss),
-          topLeft = Offset(lane * laneWidth, judgeLineY - 5f),
-          size = Size(laneWidth, 10f),
+          color = errorColor.copy(alpha = 0.95f * missAlpha),
+          topLeft = Offset(noteX(missX) - noteWidth * 0.5f, judgeLineY - 5f),
+          size = Size(noteWidth * 2f, 10f),
         )
       }
       if (pressingIndex >= 0 && pressingIndex < notes.size) {
-        val pressedLane = notes[pressingIndex].lane
+        val pressedX = noteX(notes[pressingIndex].lane)
         drawRect(
           color = accentColor.copy(alpha = 0.22f),
-          topLeft = Offset(pressedLane * laneWidth, judgeLineY - 90f),
-          size = Size(laneWidth, 180f),
+          topLeft = Offset(pressedX, judgeLineY - 90f),
+          size = Size(noteWidth, 180f),
         )
       }
       drawRect(
@@ -387,8 +381,7 @@ private fun RhythmPlay(
         if (consumed[index]) return@forEachIndexed
         val headDelta = note.timeMs - positionMs
         val headY = judgeLineY - headDelta / FALL_WINDOW_MS * judgeLineY
-        val laneX = note.lane * laneWidth + laneWidth * 0.12f
-        val noteWidth = laneWidth * 0.76f
+        val laneX = noteX(note.lane)
         if (note.durationMs > 0L) {
           val tailY = judgeLineY - (headDelta + note.durationMs) / FALL_WINDOW_MS * judgeLineY
           val top = minOf(headY, tailY) - 13f

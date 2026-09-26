@@ -3,7 +3,8 @@ package me.spica27.spicamusic.feature.library.domain.rhythm
 /** 音游谱面里的一个音符。 */
 data class RhythmNote(
   val timeMs: Long,
-  val lane: Int,
+  /** 横向位置，0..1 的自由落点（没有固定轨道）。 */
+  val lane: Float,
   val strength: Float,
   /** 长按音符的持续时长；0 表示单点。 */
   val durationMs: Long = 0L,
@@ -82,12 +83,10 @@ object RhythmChartGenerator {
       if (notes.size >= parameters.maxNotes) return@forEachIndexed
 
       // 与上一拍的能量对比决定轨道：更强就往右偏，更弱往左偏，持平留在中间。
-      val lane =
-        when {
-          strength > lastStrength + 0.08f -> (parameters.laneCount - 1)
-          strength < lastStrength - 0.08f -> 0
-          else -> parameters.laneCount / 2
-        }.coerceIn(0, parameters.laneCount - 1)
+      // 自由落点：不设固定轨道。横向位置由这一拍的强弱决定（响的偏右、轻的偏左），
+      // 再叠一点随时间来回的摆动，避免整首歌都落在同一条竖线上。
+      val wobble = if ((timeMs / 400L) % 2L == 0L) 0.12f else -0.12f
+      val lane = (0.14f + 0.72f * strength + wobble).coerceIn(0.06f, 0.94f)
 
       notes += RhythmNote(timeMs = timeMs, lane = lane, strength = strength)
       lastAcceptedMs = timeMs
