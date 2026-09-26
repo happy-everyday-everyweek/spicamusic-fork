@@ -1,13 +1,17 @@
 package me.spica27.spicamusic.ui.rhythm
 
+import android.content.ContentUris
 import android.content.Context
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.MediaStore
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -135,23 +139,41 @@ private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
   LaunchedEffect(song.mediaStoreId, analysisAttempt) {
     analyzing = true
     chart = null
-    val amplitudes =
-      withContext(Dispatchers.IO) {
-        val cached = song.waveformData?.split(",")?.mapNotNull { it.trim().toIntOrNull() }.orEmpty()
-        if (cached.isNotEmpty()) return@withContext cached
-        val extracted = analyseWithAmplituda(context, amplituda, song)
-        if (extracted.isNotEmpty()) {
-          runCatching {
-            songUseCases.updateSongWaveform(song.mediaStoreId, extracted.joinToString(","))
-          }.onFailure { Timber.tag("RhythmGame").w(it, "回写波形失败") }
-        }
-        extracted
+    // 只有首次进入才信缓存：缓存坏了要能用“重试”真正重新分析。
+    val fromCache = analysisAttempt == 0
+    val cached =
+      if (fromCache) {
+        song.waveformData
+          ?.split(",")
+          ?.mapNotNull { it.trim().toIntOrNull() }
+          ?.takeIf { it.size >= 16 && it.any { value -> value > 0 } }
+          .orEmpty()
+      } else {
+        emptyList()
       }
-    if (amplitudes.isEmpty()) {
-      analyzing = false
+    val amplitudes =
+      if (cached.isNotEmpty()) {
+        cached
+      } else {
+        withContext(Dispatchers.IO) {
+          val extracted = analyseWithAmplituda(context, amplituda, song)
+          if (extracted.isNotEmpty()) {
+            runCatching {
+              songUseCases.updateSongWaveform(song.mediaStoreId, extracted.joinToString(","))
+            }.onFailure { Timber.tag("RhythmGame").w(it, "回写波形失败") }
+          }
+          extracted
+        }
+      }
+    val effectiveDurationMs =
+      if (song.durationMs > 0L) song.durationMs else resolveDurationMs(context, song)
+    val built = buildChart(song, amplitudes, effectiveDurationMs)
+    // 缓存的波形造不出谱面时不要卡在失败页，直接改用现场分析重试一次。
+    if (built.notes.isEmpty() && fromCache && amplitudes.isNotEmpty()) {
+      analysisAttempt += 1
       return@LaunchedEffect
     }
-    chart = buildChart(song, amplitudes)
+    chart = built
     // 游戏时长同样计入听歌统计：按一次完整播放记入历史。
     runCatching { playHistory.addPlayHistory(song.mediaStoreId) }
       .onFailure { Timber.tag("RhythmGame").w(it, "写入播放历史失败") }
@@ -544,22 +566,15 @@ private fun RhythmResultDialog(
   }
 }
 
-/** 现场分析：优先直接用文件路径，路径不可读时再从 Uri 复制到缓存再解。 */
+/** 现场分析：路径、媒体库、content Uri 三级回退，尽量把音频喂给 Amplituda。 */
 private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: MusicGameSource): List<Int> {
-  val direct = File(song.path)
-  if (direct.exists() && direct.canRead()) {
-    return runAmplituda(amplituda, direct)
-  }
+  resolveReadableFile(context, song)?.let { return runAmplituda(amplituda, it) }
   val temp =
     runCatching {
-      val source = runCatching { context.contentResolver.openInputStream(song.path.toUri()) }.getOrNull()
-      if (source == null) {
-        null
-      } else {
-        val file = File.createTempFile("music_game_wave", null, context.cacheDir)
-        source.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-        file
-      }
+      val source = openAudioStream(context, song) ?: return emptyList()
+      val file = File.createTempFile("music_game_wave", null, context.cacheDir)
+      source.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+      file
     }
       .getOrNull()
       ?: return emptyList()
@@ -568,6 +583,62 @@ private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: M
   } finally {
     runCatching { temp.delete() }
   }
+}
+
+/** 可读的音频文件：先看传入路径，再用 mediaStoreId 查一次媒体库兜底。 */
+private fun resolveReadableFile(context: Context, song: MusicGameSource): File? {
+  val direct = File(song.path)
+  if (direct.exists() && direct.canRead()) return direct
+  val fromMediaStore = resolveMediaStorePath(context, song.mediaStoreId) ?: return null
+  val file = File(fromMediaStore)
+  return if (file.exists() && file.canRead()) file else null
+}
+
+private fun resolveMediaStorePath(context: Context, mediaStoreId: Long): String? {
+  if (mediaStoreId <= 0L) return null
+  return runCatching {
+    context.contentResolver
+      .query(
+        ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaStoreId),
+        arrayOf(MediaStore.Audio.Media.DATA),
+        null,
+        null,
+        null,
+      )
+      ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+  }.getOrNull()
+}
+
+/** 打开音频流：路径 Uri 与 content Uri 都试一遍，任何一路能读即可。 */
+private fun openAudioStream(context: Context, song: MusicGameSource): java.io.InputStream? {
+  val candidates =
+    listOfNotNull(
+      runCatching { song.path.toUri() }.getOrNull(),
+      runCatching { Uri.fromFile(File(song.path)) }.getOrNull(),
+      resolveMediaStorePath(context, song.mediaStoreId)?.let { path ->
+        runCatching { Uri.fromFile(File(path)) }.getOrNull()
+      },
+    )
+  candidates.forEach { uri ->
+    val stream = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+    if (stream != null) return stream
+  }
+  return null
+}
+
+/** 歌曲时长缺失时从文件元数据里补一次，避免谱面时间轴整体失真。 */
+private fun resolveDurationMs(context: Context, song: MusicGameSource): Long {
+  if (song.durationMs > 0L) return song.durationMs
+  val path =
+    resolveReadableFile(context, song)?.absolutePath
+      ?: resolveMediaStorePath(context, song.mediaStoreId)
+      ?: return 0L
+  return runCatching {
+    MediaMetadataRetriever().use { retriever ->
+      retriever.setDataSource(path)
+      retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+    }
+  }.getOrDefault(0L)
 }
 
 private fun runAmplituda(amplituda: Amplituda, file: File): List<Int> {
@@ -595,55 +666,75 @@ private fun vibrate(context: Context, judge: Judge) {
 }
 
 /**
- * 把波形变成谱面：自适应阈值抓局部能量峰，长音生成长条，轨道按强弱成对左右分配。
+ * 把波形变成谱面：自适应阈值抓局部能量峰，长音生成长条，落点用黄金分割在横向均匀铺开。
+ * 波形不可用或峰值太少时退回固定间隔的兜底谱面，保证游戏一定能开始。
  */
-private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>): RhythmChart {
-  val size = rawAmplitudes.size
-  if (size < 8) {
-    return RhythmChart(song.title, song.artist, song.durationMs, 1, emptyList())
-  }
-  val values = FloatArray(size) { rawAmplitudes[it].toFloat().coerceAtLeast(0f) }
-  val max = values.max()
-  if (max <= 0f) {
-    return RhythmChart(song.title, song.artist, song.durationMs, 1, emptyList())
-  }
-  val norm = FloatArray(size) { values[it] / max }
-  val intervalMs =
-    if (song.durationMs > 0L) (song.durationMs / size).coerceAtLeast(1L) else 20L
-
+private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>, durationMs: Long): RhythmChart {
   val notes = ArrayList<RhythmNote>()
-  val window = 40
-  var index = 1
-  var lastAcceptedMs = Long.MIN_VALUE / 2
-  var seed = 0
-
-  while (index < size - 1) {
-    val from = (index - window).coerceAtLeast(0)
-    val to = (index + window).coerceAtMost(size - 1)
-    var sum = 0f
-    for (i in from..to) sum += norm[i]
-    val localMean = sum / (to - from + 1)
-    val threshold = (localMean * 1.4f).coerceAtLeast(0.18f)
-    val strength = norm[index]
-    val isPeak = strength >= threshold && strength >= norm[index - 1] && strength >= norm[index + 1]
-    val timeMs = index * intervalMs
-
-    if (isPeak && timeMs - lastAcceptedMs >= MIN_GAP_MS) {
-      var tail = index
-      while (tail + 1 < size && norm[tail + 1] >= localMean * 0.85f) tail++
-      val holdMs = (tail - index) * intervalMs
-      val durationMs = if (holdMs >= HOLD_MIN_MS) holdMs.coerceAtMost(4000L) else 0L
-      // 自由落点：位置由这一拍的强弱决定，再叠一点左右摆动。
-      val lane =
-        (0.14f + 0.72f * strength + if (seed % 2 == 0) 0.12f else -0.12f).coerceIn(0.06f, 0.94f)
-      notes += RhythmNote(timeMs = timeMs, lane = lane, strength = strength, durationMs = durationMs)
-      lastAcceptedMs = timeMs
-      seed++
-      index = (tail + 1).coerceAtLeast(index + 1)
-      continue
+  val size = rawAmplitudes.size
+  if (size >= 8) {
+    val values = FloatArray(size) { rawAmplitudes[it].toFloat().coerceAtLeast(0f) }
+    val max = values.max()
+    if (max > 0f) {
+      val norm = FloatArray(size) { values[it] / max }
+      val intervalMs =
+        if (durationMs > 0L) (durationMs / size).coerceAtLeast(1L) else 20L
+      val window = 40
+      var index = 1
+      var lastAcceptedMs = Long.MIN_VALUE / 2
+      var seed = 0
+      while (index < size - 1) {
+        val from = (index - window).coerceAtLeast(0)
+        val to = (index + window).coerceAtMost(size - 1)
+        var sum = 0f
+        for (i in from..to) sum += norm[i]
+        val localMean = sum / (to - from + 1)
+        val threshold = (localMean * 1.4f).coerceAtLeast(0.18f)
+        val strength = norm[index]
+        val isPeak = strength >= threshold && strength >= norm[index - 1] && strength >= norm[index + 1]
+        val timeMs = index * intervalMs
+        if (isPeak && timeMs - lastAcceptedMs >= MIN_GAP_MS) {
+          var tail = index
+          while (tail + 1 < size && norm[tail + 1] >= localMean * 0.85f) tail++
+          val holdMs = (tail - index) * intervalMs
+          val holdDurationMs = if (holdMs >= HOLD_MIN_MS) holdMs.coerceAtMost(4000L) else 0L
+          notes +=
+            RhythmNote(
+              timeMs = timeMs,
+              lane = spreadLane(seed),
+              strength = strength,
+              durationMs = holdDurationMs,
+            )
+          lastAcceptedMs = timeMs
+          seed++
+          index = (tail + 1).coerceAtLeast(index + 1)
+          continue
+        }
+        index++
+      }
     }
-    index++
   }
+  // 峰太少（或波形不可用）时补一份均匀铺垫的兜底谱面，避免整首无法开始。
+  if (notes.size < 4 && durationMs > 0L) {
+    var timeMs = 1200L
+    var seed = notes.size
+    while (timeMs < durationMs - 800L && notes.size < 3000) {
+      notes += RhythmNote(timeMs = timeMs, lane = spreadLane(seed), strength = 0.5f)
+      timeMs += 520L
+      seed++
+    }
+  }
+  return RhythmChart(
+    title = song.title,
+    artist = song.artist,
+    durationMs = if (durationMs > 0L) durationMs else song.durationMs,
+    laneCount = 1,
+    notes = notes,
+  )
+}
 
-  return RhythmChart(song.title, song.artist, song.durationMs, 1, notes)
+/** 自由落点：用黄金分割在横向均匀铺开，既没有固定轨道，也不会在同一处扎堆。 */
+private fun spreadLane(seed: Int): Float {
+  val spread = (seed * 0.6180339f) % 1f
+  return (0.12f + 0.76f * spread).coerceIn(0.08f, 0.92f)
 }
