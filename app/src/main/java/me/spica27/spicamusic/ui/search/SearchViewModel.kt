@@ -170,13 +170,17 @@ class SearchViewModel(
     }
 
     /** 某条在线结果的下载进度，未在下载则返回 null（用于行内底色）。 */
-    fun onlineProgress(track: OnlineTrack): Float? {
-        val state = onlineDownloader?.states?.value?.get("${track.sourceKey}:${track.id}") ?: return null
-        return when (state) {
-            is DownloadState.Running -> state.progress
-            DownloadState.Idle, is DownloadState.Done, is DownloadState.Failed -> null
-        }
+  fun onlineProgress(track: OnlineTrack): Float? {
+    val state = onlineDownloader?.states?.value?.get("${track.sourceKey}:${track.id}") ?: return null
+    return when (state) {
+      is DownloadState.Running -> state.progress
+      DownloadState.Idle, is DownloadState.Done, is DownloadState.Failed -> null
     }
+  }
+
+  /** 该条在线结果是否已经失败，用于行内给出可见提示。 */
+  fun onlineFailed(track: OnlineTrack): Boolean =
+    onlineDownloader?.states?.value?.get("${track.sourceKey}:${track.id}") is DownloadState.Failed
 
     private companion object {
         const val ONLINE_SEARCH_LIMIT = 25

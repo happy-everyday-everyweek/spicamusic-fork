@@ -117,6 +117,7 @@ fun OnlineTrackRow(
   progress: Float?,
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
+  failed: Boolean = false,
 ) {
   val downloading = progress != null
   val fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -159,9 +160,10 @@ fun OnlineTrackRow(
           append(track.artist.ifBlank { "未知艺术家" })
           track.album?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
           if (downloading) append(" · 下载中 ").append(((progress ?: 0f) * 100).toInt()).append("%")
+          if (failed) append(" · 下载失败，点一下重试")
         },
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -184,6 +186,7 @@ fun OnlineResultsSection(
   progressOf: (OnlineTrack) -> Float?,
   onTrackClick: (OnlineTrack) -> Unit,
   modifier: Modifier = Modifier,
+  failedOf: (OnlineTrack) -> Boolean = { false },
 ) {
   val showLoading = state.loading && !state.hasResults
   if (!showLoading && !state.hasResults && state.failedSources.isEmpty()) return
@@ -214,6 +217,7 @@ fun OnlineResultsSection(
         OnlineTrackRow(
           track = track,
           progress = progressOf(track),
+          failed = failedOf(track),
           onClick = { onTrackClick(track) },
         )
       }

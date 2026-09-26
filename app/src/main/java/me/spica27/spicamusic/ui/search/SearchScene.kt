@@ -249,6 +249,7 @@ fun SearchScreen() {
                                 state = onlineState,
                                 progressOf = { track -> searchViewModel.onlineProgress(track) },
                                 onTrackClick = { track -> searchViewModel.downloadOnline(track) },
+                                failedOf = { track -> searchViewModel.onlineFailed(track) },
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -270,6 +271,7 @@ fun SearchScreen() {
                                 state = onlineState,
                                 progressOf = { track -> searchViewModel.onlineProgress(track) },
                                 onTrackClick = { track -> searchViewModel.downloadOnline(track) },
+                                failedOf = { track -> searchViewModel.onlineFailed(track) },
                                 // 同样按内容占位，避免被容器边缘裁掉分组头
                                 modifier = Modifier.weight(1f, fill = false),
                             )

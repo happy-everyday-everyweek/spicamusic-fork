@@ -10,7 +10,10 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -277,29 +280,37 @@ private fun RhythmPlay(
         .background(surfaceColor)
         .pointerInput(chart, finished, paused) {
           if (finished || paused) return@pointerInput
-          detectTapGestures { offset ->
-            val lane = ((offset.x / (size.width / LANE_COUNT)).toInt()).coerceIn(0, LANE_COUNT - 1)
-            val hitIndex =
+          awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val lane = ((down.position.x / (size.width / LANE_COUNT)).toInt()).coerceIn(0, LANE_COUNT - 1)
+            val candidate =
               notes.indices
                 .filter { !consumed[it] && notes[it].lane == lane }
                 .minByOrNull { abs(notes[it].timeMs - positionMs) }
-            if (hitIndex != null) {
-              val delta = abs(notes[hitIndex].timeMs - positionMs).toFloat()
-              if (delta <= GREAT_WINDOW_MS) {
-                consumed[hitIndex] = true
-                val judge = if (delta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
-                when (judge) {
-                  Judge.Perfect -> perfectCount += 1
-                  Judge.Great -> greatCount += 1
-                  Judge.Miss -> missCount += 1
-                }
-                combo += 1
-                bestCombo = maxOf(bestCombo, combo)
-                score += judge.score + combo * 2
-                laneFlash[lane] = 1f
-                vibrate(context, judge)
-              }
+            val pressedAt = System.currentTimeMillis()
+            val up = waitForUpOrCancellation()
+            val heldMs = System.currentTimeMillis() - pressedAt
+            val index = candidate ?: return@awaitEachGesture
+            val note = notes[index]
+            val delta = abs(note.timeMs - positionMs).toFloat()
+            if (delta > GREAT_WINDOW_MS) return@awaitEachGesture
+            // 长条必须真的按住：松手太早不算命中。
+            if (note.durationMs > 0L) {
+              val needed = minOf(note.durationMs, 900L)
+              if (up == null || heldMs < needed) return@awaitEachGesture
             }
+            consumed[index] = true
+            val judge = if (delta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
+            when (judge) {
+              Judge.Perfect -> perfectCount += 1
+              Judge.Great -> greatCount += 1
+              Judge.Miss -> missCount += 1
+            }
+            combo += 1
+            bestCombo = maxOf(bestCombo, combo)
+            score += judge.score + combo * 2
+            laneFlash[lane] = 1f
+            vibrate(context, judge)
           }
         },
   ) {
