@@ -69,9 +69,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 音乐游戏：跟着歌曲的节奏点敲四条轨道。
+ * 音乐游戏：跟着歌曲的节奏点击自由落点。
  *
- * 谱面从音频波形现场分析得来，长音会变成需要长按的长条；进入游戏时申请独占音频焦点，
+ * 谱面由 TarsosDSP 的起音检测与 BeatRoot 节拍推断现场生成，长音会变成需要长按的长条；进入游戏时申请独占音频焦点，
  * 正在播放的音乐会自动让路，退出后恢复。游戏中可随时暂停，暂停后能继续或直接结束本局；
  * 结束时统一进结算页，给得分、最高连击、逐项判定与等级。
  * 界面保持安静：游戏中顶部只有连击与暂停，反馈交给落点、闪光与震动。
@@ -127,10 +127,8 @@ private const val HOLD_MIN_MS = 420L
 
 @Composable
 private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
-  val context = LocalContext.current
-  val amplituda = koinInject<Amplituda>()
-  val songUseCases = koinInject<SongUseCases>()
-  val playHistory = koinInject<me.spica27.spicamusic.feature.library.domain.PlayHistoryUseCases>()
+    val context = LocalContext.current
+    val playHistory = koinInject<me.spica27.spicamusic.feature.library.domain.PlayHistoryUseCases>()
 
   var chart by remember(song.mediaStoreId) { mutableStateOf<RhythmChart?>(null) }
   var analyzing by remember(song.mediaStoreId) { mutableStateOf(true) }
@@ -139,40 +137,22 @@ private fun RhythmGameSurface(song: MusicGameSource, onClose: () -> Unit) {
   LaunchedEffect(song.mediaStoreId, analysisAttempt) {
     analyzing = true
     chart = null
-    // 只有首次进入才信缓存：缓存坏了要能用“重试”真正重新分析。
-    val fromCache = analysisAttempt == 0
-    val cached =
-      if (fromCache) {
-        song.waveformData
-          ?.split(",")
-          ?.mapNotNull { it.trim().toIntOrNull() }
-          ?.takeIf { it.size >= 16 && it.any { value -> value > 0 } }
-          .orEmpty()
-      } else {
-        emptyList()
-      }
-    val amplitudes =
-      if (cached.isNotEmpty()) {
-        cached
-      } else {
-        withContext(Dispatchers.IO) {
-          val extracted = analyseWithAmplituda(context, amplituda, song)
-          if (extracted.isNotEmpty()) {
-            runCatching {
-              songUseCases.updateSongWaveform(song.mediaStoreId, extracted.joinToString(","))
-            }.onFailure { Timber.tag("RhythmGame").w(it, "回写波形失败") }
-          }
-          extracted
+    // 谱面完全来自 TarsosDSP 的现场分析；分析失败返回空谱面，由界面如实提示。
+    val built =
+      withContext(Dispatchers.IO) {
+        val file = resolveReadableFile(context, song)
+        if (file == null) {
+          Timber.tag("RhythmGame").w("找不到可读的音频文件：${song.path}")
+          null
+        } else {
+          TarsosChartAnalyzer.analyze(
+            file = file,
+            title = song.title,
+            artist = song.artist,
+            fallbackDurationMs = song.durationMs,
+          )
         }
       }
-    val effectiveDurationMs =
-      if (song.durationMs > 0L) song.durationMs else resolveDurationMs(context, song)
-    val built = buildChart(song, amplitudes, effectiveDurationMs)
-    // 缓存的波形造不出谱面时不要卡在失败页，直接改用现场分析重试一次。
-    if (built.notes.isEmpty() && fromCache && amplitudes.isNotEmpty()) {
-      analysisAttempt += 1
-      return@LaunchedEffect
-    }
     chart = built
     // 游戏时长同样计入听歌统计：按一次完整播放记入历史。
     runCatching { playHistory.addPlayHistory(song.mediaStoreId) }
@@ -566,25 +546,6 @@ private fun RhythmResultDialog(
   }
 }
 
-/** 现场分析：路径、媒体库、content Uri 三级回退，尽量把音频喂给 Amplituda。 */
-private fun analyseWithAmplituda(context: Context, amplituda: Amplituda, song: MusicGameSource): List<Int> {
-  resolveReadableFile(context, song)?.let { return runAmplituda(amplituda, it) }
-  val temp =
-    runCatching {
-      val source = openAudioStream(context, song) ?: return emptyList()
-      val file = File.createTempFile("music_game_wave", null, context.cacheDir)
-      source.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-      file
-    }
-      .getOrNull()
-      ?: return emptyList()
-  return try {
-    runAmplituda(amplituda, temp)
-  } finally {
-    runCatching { temp.delete() }
-  }
-}
-
 /** 可读的音频文件：先看传入路径，再用 mediaStoreId 查一次媒体库兜底。 */
 private fun resolveReadableFile(context: Context, song: MusicGameSource): File? {
   val direct = File(song.path)
@@ -607,23 +568,6 @@ private fun resolveMediaStorePath(context: Context, mediaStoreId: Long): String?
       )
       ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
   }.getOrNull()
-}
-
-/** 打开音频流：路径 Uri 与 content Uri 都试一遍，任何一路能读即可。 */
-private fun openAudioStream(context: Context, song: MusicGameSource): java.io.InputStream? {
-  val candidates =
-    listOfNotNull(
-      runCatching { song.path.toUri() }.getOrNull(),
-      runCatching { Uri.fromFile(File(song.path)) }.getOrNull(),
-      resolveMediaStorePath(context, song.mediaStoreId)?.let { path ->
-        runCatching { Uri.fromFile(File(path)) }.getOrNull()
-      },
-    )
-  candidates.forEach { uri ->
-    val stream = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
-    if (stream != null) return stream
-  }
-  return null
 }
 
 /** 歌曲时长缺失时从文件元数据里补一次，避免谱面时间轴整体失真。 */

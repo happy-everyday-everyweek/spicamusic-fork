@@ -36,3 +36,7 @@
     <methods>;
 }
 
+# TarsosDSP：音游节拍分析链路（起音检测 / BeatRoot），保持类与成员避免裁剪与混淆
+-keep class be.tarsos.dsp.** { *; }
+-dontwarn be.tarsos.dsp.**
+
