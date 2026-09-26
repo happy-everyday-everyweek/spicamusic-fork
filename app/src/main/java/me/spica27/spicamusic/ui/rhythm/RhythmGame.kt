@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -202,11 +203,13 @@ private fun RhythmPlay(
   val notes = chart.notes
   val totalNotes = notes.size
   val consumed = remember(chart) { mutableStateListOf<Boolean>().apply { repeat(totalNotes) { add(false) } } }
-  /** 命中闪光：记录发生位置（0..1 横向比例）与亮度，自由落点没有固定轨道。 */
+  /** 命中闪光：记录发生位置（x 为 0..1 横向比例，y 为像素）与亮度。 */
   var flashX by remember(chart) { mutableStateOf(-1f) }
+  var flashY by remember(chart) { mutableStateOf(-1f) }
   var flashAlpha by remember(chart) { mutableStateOf(0f) }
-  /** 失败闪光：与命中闪光分开配色，让“没按住”一眼可辨。 */
+  /** 失败闪光：在漏掉的音符本体上点亮红色光晕；missY 为 -1 表示落在判定线。 */
   var missX by remember(chart) { mutableStateOf(-1f) }
+  var missY by remember(chart) { mutableStateOf(-1f) }
   var missAlpha by remember(chart) { mutableStateOf(0f) }
   /** 当前按住的是哪一条音符，用于按下高亮。 */
   var pressingIndex by remember(chart) { mutableIntStateOf(-1) }
@@ -262,6 +265,9 @@ private fun RhythmPlay(
           consumed[index] = true
           combo = 0
           missCount += 1
+          missX = notes[index].lane + 0.04f
+          missY = -1f
+          missAlpha = 1f
           vibrate(context, Judge.Miss)
         }
       }
@@ -288,40 +294,34 @@ private fun RhythmPlay(
           if (finished || paused) return@pointerInput
           awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            // 自由落点：按触点的横向位置就近取音符，不再有固定轨道。
+            // 自由落点：按触点的横向位置就近取音符；判定窗口从头判前 200ms 一直开到长条尾部之后。
             val xFrac = (down.position.x / size.width).coerceIn(0f, 1f)
+            val lineY = size.height * 0.82f
+            val noteW = (size.width * 0.08f).coerceIn(20f, 64f)
             val candidate =
               notes.indices
                 .filter { !consumed[it] && abs(notes[it].lane - xFrac) <= HIT_TOLERANCE }
+                .filter {
+                  positionMs >= notes[it].timeMs - GREAT_WINDOW_MS.toLong() &&
+                    positionMs <= notes[it].timeMs + notes[it].durationMs + GREAT_WINDOW_MS.toLong()
+                }
                 .minByOrNull { abs(notes[it].timeMs - positionMs) }
-            // 按下立刻有反馈：触点亮起；若是长条，判定线附近持续高亮直到松手。
-            flashX = xFrac
-            flashAlpha = 0.6f
             pressingIndex = candidate ?: -1
-            val pressedAt = System.currentTimeMillis()
-            val up = waitForUpOrCancellation()
-            val heldMs = System.currentTimeMillis() - pressedAt
+            // 按下立刻有反馈：触点处先亮一下，命中后光效移到音符本体上。
+            flashX = xFrac
+            flashY = down.position.y
+            flashAlpha = 0.55f
             val index = candidate
-            pressingIndex = -1
-            if (index == null) return@awaitEachGesture
-            val note = notes[index]
-            val delta = abs(note.timeMs - positionMs).toFloat()
-            if (delta > GREAT_WINDOW_MS) return@awaitEachGesture
-            if (note.durationMs > 0L) {
-              val needed = minOf(note.durationMs, 900L)
-              if (up == null || heldMs < needed) {
-                // 长条没按住：明确判定为错过并给出红色闪光与震动
-                consumed[index] = true
-                combo = 0
-                missCount += 1
-                missX = xFrac
-                missAlpha = 1f
-                vibrate(context, Judge.Miss)
-                return@awaitEachGesture
-              }
+            if (index == null) {
+              waitForUpOrCancellation()
+              pressingIndex = -1
+              return@awaitEachGesture
             }
+            // 点到就判：点一下或按住都算命中。
+            val note = notes[index]
+            val headDelta = abs(note.timeMs - positionMs).toFloat()
+            val judge = if (headDelta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
             consumed[index] = true
-            val judge = if (delta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
             when (judge) {
               Judge.Perfect -> perfectCount += 1
               Judge.Great -> greatCount += 1
@@ -330,9 +330,13 @@ private fun RhythmPlay(
             combo += 1
             bestCombo = maxOf(bestCombo, combo)
             score += judge.score + combo * 2
-            flashX = notes[index].lane
+            val centerX = (note.lane * (size.width - noteW) + noteW / 2f) / size.width
+            flashX = centerX
+            flashY = (lineY - (note.timeMs - positionMs).toFloat() / FALL_WINDOW_MS * lineY).coerceIn(0f, lineY)
             flashAlpha = 1f
             vibrate(context, judge)
+            waitForUpOrCancellation()
+            pressingIndex = -1
           }
         },
   ) {
@@ -340,36 +344,30 @@ private fun RhythmPlay(
       val judgeLineY = size.height * 0.82f
       val noteWidth = (size.width * 0.08f).coerceIn(20f, 64f)
       val noteX = { pos: Float -> pos * (size.width - noteWidth) }
-      if (flashAlpha > 0f) {
-        drawRect(
-          color = accentColor.copy(alpha = 0.10f * flashAlpha),
-          topLeft = Offset(noteX(flashX) - noteWidth * 0.5f, 0f),
-          size = Size(noteWidth * 2f, judgeLineY),
-        )
-        drawRect(
-          color = accentColor.copy(alpha = 0.9f * flashAlpha),
-          topLeft = Offset(noteX(flashX) - noteWidth * 0.5f, judgeLineY - 5f),
-          size = Size(noteWidth * 2f, 10f),
-        )
+      if (flashAlpha > 0f && flashX >= 0f) {
+        val cx = flashX * size.width
+        val cy = if (flashY < 0f) judgeLineY else flashY.coerceIn(0f, judgeLineY)
+        val r = noteWidth * (0.9f + 0.9f * (1f - flashAlpha))
+        drawCircle(color = accentColor.copy(alpha = 0.16f * flashAlpha), radius = r, center = Offset(cx, cy))
+        drawCircle(color = accentColor.copy(alpha = 0.5f * flashAlpha), radius = r * 0.45f, center = Offset(cx, cy))
       }
-      if (missAlpha > 0f) {
-        drawRect(
-          color = errorColor.copy(alpha = 0.14f * missAlpha),
-          topLeft = Offset(noteX(missX) - noteWidth * 0.5f, 0f),
-          size = Size(noteWidth * 2f, judgeLineY),
-        )
-        drawRect(
-          color = errorColor.copy(alpha = 0.95f * missAlpha),
-          topLeft = Offset(noteX(missX) - noteWidth * 0.5f, judgeLineY - 5f),
-          size = Size(noteWidth * 2f, 10f),
-        )
+      if (missAlpha > 0f && missX >= 0f) {
+        val cx = missX * size.width
+        val cy = if (missY < 0f) judgeLineY else missY.coerceIn(0f, judgeLineY)
+        val r = noteWidth * (0.9f + 0.9f * (1f - missAlpha))
+        drawCircle(color = errorColor.copy(alpha = 0.16f * missAlpha), radius = r, center = Offset(cx, cy))
+        drawCircle(color = errorColor.copy(alpha = 0.55f * missAlpha), radius = r * 0.45f, center = Offset(cx, cy))
       }
       if (pressingIndex >= 0 && pressingIndex < notes.size) {
-        val pressedX = noteX(notes[pressingIndex].lane)
-        drawRect(
-          color = accentColor.copy(alpha = 0.22f),
-          topLeft = Offset(pressedX, judgeLineY - 90f),
-          size = Size(noteWidth, 180f),
+        val pressed = notes[pressingIndex]
+        val px = noteX(pressed.lane)
+        val py = (judgeLineY - (pressed.timeMs - positionMs).toFloat() / FALL_WINDOW_MS * judgeLineY).coerceIn(0f, judgeLineY)
+        drawRoundRect(
+          color = accentColor.copy(alpha = 0.9f),
+          topLeft = Offset(px - 4f, py - 17f),
+          size = Size(noteWidth + 8f, 34f),
+          cornerRadius = CornerRadius(18f, 18f),
+          style = Stroke(width = 3f),
         )
       }
       drawRect(
@@ -477,7 +475,9 @@ private fun RhythmPlay(
           positionMs = 0L
           for (index in consumed.indices) consumed[index] = false
           flashAlpha = 0f
+          flashX = -1f
           missAlpha = 0f
+          missX = -1f
           attempt += 1
         },
         onClose = onClose,
