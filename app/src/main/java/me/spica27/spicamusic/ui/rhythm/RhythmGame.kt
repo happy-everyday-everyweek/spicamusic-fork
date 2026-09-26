@@ -203,6 +203,10 @@ private fun RhythmPlay(
   val totalNotes = notes.size
   val consumed = remember(chart) { mutableStateListOf<Boolean>().apply { repeat(totalNotes) { add(false) } } }
   val laneFlash = remember(chart) { mutableStateListOf<Float>().apply { repeat(LANE_COUNT) { add(0f) } } }
+  /** 失败闪光：与命中闪光分开配色，让“没按住”一眼可辨。 */
+  val missFlash = remember(chart) { mutableStateListOf<Float>().apply { repeat(LANE_COUNT) { add(0f) } } }
+  /** 当前按住的是哪一条音符，用于按下高亮。 */
+  var pressingIndex by remember(chart) { mutableIntStateOf(-1) }
 
   var positionMs by remember { mutableLongStateOf(0L) }
   var score by remember { mutableIntStateOf(0) }
@@ -260,6 +264,7 @@ private fun RhythmPlay(
       }
       for (lane in 0 until LANE_COUNT) {
         if (laneFlash[lane] > 0f) laneFlash[lane] = (laneFlash[lane] - 0.07f).coerceAtLeast(0f)
+        if (missFlash[lane] > 0f) missFlash[lane] = (missFlash[lane] - 0.07f).coerceAtLeast(0f)
       }
       if (positionMs > endMs && endMs > 1500L) finished = true
       delay(16)
@@ -270,6 +275,7 @@ private fun RhythmPlay(
   val laneColor = MaterialTheme.colorScheme.surfaceContainerHigh
   val noteColor = MaterialTheme.colorScheme.primary
   val accentColor = MaterialTheme.colorScheme.tertiary
+  val errorColor = MaterialTheme.colorScheme.error
   val comboColor = MaterialTheme.colorScheme.onSurface
   val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -287,17 +293,29 @@ private fun RhythmPlay(
               notes.indices
                 .filter { !consumed[it] && notes[it].lane == lane }
                 .minByOrNull { abs(notes[it].timeMs - positionMs) }
+            // 按下立刻有反馈：轨道亮起；若是长条，判定线附近持续高亮直到松手。
+            laneFlash[lane] = 0.6f
+            pressingIndex = candidate ?: -1
             val pressedAt = System.currentTimeMillis()
             val up = waitForUpOrCancellation()
             val heldMs = System.currentTimeMillis() - pressedAt
-            val index = candidate ?: return@awaitEachGesture
+            val index = candidate
+            pressingIndex = -1
+            if (index == null) return@awaitEachGesture
             val note = notes[index]
             val delta = abs(note.timeMs - positionMs).toFloat()
             if (delta > GREAT_WINDOW_MS) return@awaitEachGesture
-            // 长条必须真的按住：松手太早不算命中。
             if (note.durationMs > 0L) {
               val needed = minOf(note.durationMs, 900L)
-              if (up == null || heldMs < needed) return@awaitEachGesture
+              if (up == null || heldMs < needed) {
+                // 长条没按住：明确判定为错过并给出红色闪光与震动
+                consumed[index] = true
+                combo = 0
+                missCount += 1
+                missFlash[lane] = 1f
+                vibrate(context, Judge.Miss)
+                return@awaitEachGesture
+              }
             }
             consumed[index] = true
             val judge = if (delta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
@@ -336,6 +354,28 @@ private fun RhythmPlay(
           color = accentColor.copy(alpha = 0.9f * flash),
           topLeft = Offset(lane * laneWidth, judgeLineY - 5f),
           size = Size(laneWidth, 10f),
+        )
+      }
+      for (lane in 0 until LANE_COUNT) {
+        val miss = missFlash[lane]
+        if (miss <= 0f) continue
+        drawRect(
+          color = errorColor.copy(alpha = 0.26f * miss),
+          topLeft = Offset(lane * laneWidth, 0f),
+          size = Size(laneWidth, judgeLineY),
+        )
+        drawRect(
+          color = errorColor.copy(alpha = 0.95f * miss),
+          topLeft = Offset(lane * laneWidth, judgeLineY - 5f),
+          size = Size(laneWidth, 10f),
+        )
+      }
+      if (pressingIndex >= 0 && pressingIndex < notes.size) {
+        val pressedLane = notes[pressingIndex].lane
+        drawRect(
+          color = accentColor.copy(alpha = 0.22f),
+          topLeft = Offset(pressedLane * laneWidth, judgeLineY - 90f),
+          size = Size(laneWidth, 180f),
         )
       }
       drawRect(
