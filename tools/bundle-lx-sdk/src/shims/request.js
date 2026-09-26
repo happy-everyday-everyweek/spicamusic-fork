@@ -1,6 +1,12 @@
 // 落雪 httpFetch 的垫片：保持与原实现相同的返回结构（{ promise, cancelHttp }），
 // 底层改用原生 HTTP 能力，不再依赖 Node 的 needle。
 import { httpRequest } from '../runtime/native.js'
+// 照搬洛雪移动版：每个请求都带默认 UA，缺了它不少源会被服务端拒绝。
+const defaultHeaders = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36',
+}
+const mergeHeaders = (headers) => ({ ...defaultHeaders, ...(headers || {}) })
 
 const normalizeResp = (raw) => {
   const resp = {
@@ -40,7 +46,7 @@ const buildPromise = (url, options = {}) => {
   obj.promise = httpRequest({
     url,
     method: (options.method || 'get').toUpperCase(),
-    headers,
+    headers: mergeHeaders(headers),
     body,
     timeout: options.timeout || 15000,
   })
