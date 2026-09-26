@@ -39,7 +39,9 @@
 
 柠檬音乐是一款面向本地音乐播放的现代化 Android 应用，基于 **Media3 ExoPlayer**、**Jetpack Compose** 与 **Koin** 构建，支持 Android 10 及以上系统。
 
-应用可扫描设备中的音乐文件，并提供收藏、歌单、播放历史、在线歌词、均衡器、响度归一化和实时频谱等功能。项目采用**分层 + 多模块**架构：`app` 负责 Compose UI、应用级 DI 与后台播放服务；`feature-*-domain` 暴露 use case / facade；`feature-*-data` 提供数据实现；`common` 与 `core-preferences` 提供跨模块共享能力。
+本仓库是 SPICaMusic 的分支版本：在本地曲库能力（扫描、收藏、歌单、播放历史、歌词、均衡器、响度归一化、实时频谱）之外，新增了内置在线音源（移植自洛雪音乐，含酷我 / 酷狗 / QQ / 网易 / 咪咕，支持在线搜索、试听与下载）、扫描目录白名单与歌曲迁移、下载时写入内嵌歌词与封面、音乐节奏游戏等功能。
+
+架构采用**分层 + 多模块**：`app` 负责 Compose UI、应用级 DI 与后台播放服务；`feature-*-domain` 暴露 use case / facade；`feature-*-data` 提供数据实现；`common` 与 `core-preferences` 提供跨模块共享能力。
 
 ## 🏗️ 架构设计
 

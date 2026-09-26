@@ -125,6 +125,7 @@ fun SettingsScreen() {
     val coverTapValue by viewModel.dynamicCoverType.collectAsStateWithLifecycle()
     val progressWaveformValue by viewModel.progressBarStyle.collectAsStateWithLifecycle()
     val colorStyleValue by viewModel.themeColorStyle.collectAsStateWithLifecycle()
+    val colorSourceValue by viewModel.colorSource.collectAsStateWithLifecycle()
     val playerViewModel = LocalPlayerViewModel.current
     val sleepTimer by playerViewModel.sleepTimer.collectAsStateWithLifecycle()
 
@@ -178,6 +179,7 @@ fun SettingsScreen() {
 
             item(key = "settings_appearance") {
                 val colorStyleOptions = rememberColorStyleOptions()
+                val colorSourceOptions = rememberColorSourceOptions()
                 SettingsSectionCard(
                     title = stringResource(R.string.settings_appearance),
                     subtitle = stringResource(R.string.settings_appearance_subtitle),
@@ -196,6 +198,18 @@ fun SettingsScreen() {
                         expandedKey = expandedRowKey,
                         onExpandChange = { expandedRowKey = it },
                         onValueChange = viewModel::setThemeColorStyle,
+                    )
+                    SettingsItemDivider()
+                    InlineSelectRow(
+                        rowKey = "color_source",
+                        title = stringResource(R.string.settings_color_source),
+                        summary = stringResource(R.string.settings_color_source_subtitle),
+                        icon = Icons.Default.AutoAwesome,
+                        options = colorSourceOptions,
+                        currentValue = colorSourceValue,
+                        expandedKey = expandedRowKey,
+                        onExpandChange = { expandedRowKey = it },
+                        onValueChange = viewModel::setColorSource,
                     )
                     SettingsItemDivider()
                     SwitchRow(
@@ -222,15 +236,6 @@ fun SettingsScreen() {
                         Modifier
                             .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
                             .entrance(order = 6, play = !entrancePlayed),
-                )
-            }
-
-            item(key = "settings_scan_scope") {
-                ScanScopeSettingsSection(
-                    modifier =
-                        Modifier
-                            .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
-                            .entrance(order = 7, play = !entrancePlayed),
                 )
             }
 
@@ -981,8 +986,9 @@ private fun OnlineDownloadSettingsSection(modifier: Modifier = Modifier) {
     }
 }
 
+/** 扫描范围与迁移设置：统一放在“扫描音乐”页呈现，设置页不再单独展示。 */
 @Composable
-private fun ScanScopeSettingsSection(modifier: Modifier = Modifier) {
+fun ScanScopeSettingsSection(modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { me.spica27.spicamusic.online.settings.ScanScopeStore(context) }
     val songUseCases = org.koin.compose.koinInject<me.spica27.spicamusic.feature.library.domain.SongUseCases>()
@@ -1136,6 +1142,32 @@ private fun rememberColorStyleOptions(): ImmutableList<SettingsOption> {
                     flatLabel,
                     flatDesc,
                     Icons.Default.Layers,
+                ),
+            ),
+        )
+    }
+}
+
+@Composable
+private fun rememberColorSourceOptions(): ImmutableList<SettingsOption> {
+    val dynamicLabel = stringResource(R.string.color_source_dynamic)
+    val dynamicDesc = stringResource(R.string.color_source_dynamic_desc)
+    val coverLabel = stringResource(R.string.color_source_cover)
+    val coverDesc = stringResource(R.string.color_source_cover_desc)
+    return remember(dynamicLabel, dynamicDesc, coverLabel, coverDesc) {
+        ImmutableList.copyOf(
+            listOf(
+                SettingsOption(
+                    me.spica27.spicamusic.common.entity.ColorSource.Dynamic.value,
+                    dynamicLabel,
+                    dynamicDesc,
+                    Icons.Default.AutoAwesome,
+                ),
+                SettingsOption(
+                    me.spica27.spicamusic.common.entity.ColorSource.Cover.value,
+                    coverLabel,
+                    coverDesc,
+                    Icons.Default.Palette,
                 ),
             ),
         )

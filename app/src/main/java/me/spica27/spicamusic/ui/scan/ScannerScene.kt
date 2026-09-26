@@ -94,6 +94,7 @@ import me.spica27.spicamusic.ui.navigation.LocalBackStack
 import me.spica27.spicamusic.ui.navigation.ScanFoldersRoute
 import me.spica27.spicamusic.ui.navigation.ScanRulesRoute
 import me.spica27.spicamusic.ui.settings.MediaLibrarySourceViewModel
+import me.spica27.spicamusic.ui.settings.ScanScopeSettingsSection
 import me.spica27.spicamusic.ui.settings.ScanState
 import me.spica27.spicamusic.ui.theme.LayoutTokens
 import me.spica27.spicamusic.ui.theme.Shapes
@@ -259,6 +260,16 @@ private fun ScannerScreenContent() {
                             .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
                             .padding(top = Spacing.ExtraLarge)
                             .entrance(order = 2, play = !entrancePlayed),
+                )
+            }
+
+            item(key = "scanner_scope") {
+                ScanScopeSettingsSection(
+                    modifier =
+                        Modifier
+                            .padding(horizontal = LayoutTokens.MusicHeaderHorizontalPadding)
+                            .padding(top = Spacing.ExtraLarge)
+                            .entrance(order = 3, play = !entrancePlayed),
                 )
             }
         }
