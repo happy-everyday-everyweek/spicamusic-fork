@@ -148,6 +148,7 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer.ffmpeg)
 
   implementation libs.timber
+  implementation libs.tarsosdsp.core
   implementation(libs.accompanist.permissions)
   implementation(libs.androidx.paging.compose)
 
