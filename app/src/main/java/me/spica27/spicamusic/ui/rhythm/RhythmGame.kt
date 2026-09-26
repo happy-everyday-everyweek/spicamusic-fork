@@ -476,7 +476,8 @@ private fun RhythmPlay(
           finished = false
           positionMs = 0L
           for (index in consumed.indices) consumed[index] = false
-          for (lane in 0 until LANE_COUNT) laneFlash[lane] = 0f
+          flashAlpha = 0f
+          missAlpha = 0f
           attempt += 1
         },
         onClose = onClose,
@@ -599,12 +600,12 @@ private fun vibrate(context: Context, judge: Judge) {
 private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>): RhythmChart {
   val size = rawAmplitudes.size
   if (size < 8) {
-    return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, emptyList())
+    return RhythmChart(song.title, song.artist, song.durationMs, 1, emptyList())
   }
   val values = FloatArray(size) { rawAmplitudes[it].toFloat().coerceAtLeast(0f) }
   val max = values.max()
   if (max <= 0f) {
-    return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, emptyList())
+    return RhythmChart(song.title, song.artist, song.durationMs, 1, emptyList())
   }
   val norm = FloatArray(size) { values[it] / max }
   val intervalMs =
@@ -632,13 +633,9 @@ private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>): RhythmC
       while (tail + 1 < size && norm[tail + 1] >= localMean * 0.85f) tail++
       val holdMs = (tail - index) * intervalMs
       val durationMs = if (holdMs >= HOLD_MIN_MS) holdMs.coerceAtMost(4000L) else 0L
-      val left = seed % 2 == 0
+      // 自由落点：位置由这一拍的强弱决定，再叠一点左右摆动。
       val lane =
-        when {
-          strength >= 0.8f -> if (left) 0 else LANE_COUNT - 1
-          strength >= 0.55f -> if (left) 1 else LANE_COUNT - 2
-          else -> if (left) LANE_COUNT / 2 else LANE_COUNT / 2 - 1
-        }.coerceIn(0, LANE_COUNT - 1)
+        (0.14f + 0.72f * strength + if (seed % 2 == 0) 0.12f else -0.12f).coerceIn(0.06f, 0.94f)
       notes += RhythmNote(timeMs = timeMs, lane = lane, strength = strength, durationMs = durationMs)
       lastAcceptedMs = timeMs
       seed++
@@ -648,5 +645,5 @@ private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>): RhythmC
     index++
   }
 
-  return RhythmChart(song.title, song.artist, song.durationMs, LANE_COUNT, notes)
+  return RhythmChart(song.title, song.artist, song.durationMs, 1, notes)
 }
