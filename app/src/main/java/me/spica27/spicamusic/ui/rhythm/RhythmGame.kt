@@ -667,7 +667,7 @@ private fun vibrate(context: Context, judge: Judge) {
 
 /**
  * 把波形变成谱面：自适应阈值抓局部能量峰，长音生成长条，落点用黄金分割在横向均匀铺开。
- * 波形不可用或峰值太少时退回固定间隔的兜底谱面，保证游戏一定能开始。
+ * 分析不出峰就返回空谱面，交由界面如实提示，不生成失真的兜底音符。
  */
 private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>, durationMs: Long): RhythmChart {
   val notes = ArrayList<RhythmNote>()
@@ -712,16 +712,6 @@ private fun buildChart(song: MusicGameSource, rawAmplitudes: List<Int>, duration
         }
         index++
       }
-    }
-  }
-  // 峰太少（或波形不可用）时补一份均匀铺垫的兜底谱面，避免整首无法开始。
-  if (notes.size < 4 && durationMs > 0L) {
-    var timeMs = 1200L
-    var seed = notes.size
-    while (timeMs < durationMs - 800L && notes.size < 3000) {
-      notes += RhythmNote(timeMs = timeMs, lane = spreadLane(seed), strength = 0.5f)
-      timeMs += 520L
-      seed++
     }
   }
   return RhythmChart(
