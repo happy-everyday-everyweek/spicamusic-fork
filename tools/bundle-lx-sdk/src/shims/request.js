@@ -31,17 +31,26 @@ const buildPromise = (url, options = {}) => {
       obj.isCancelled = true
     },
   }
-  // needle 会把对象类型的 data 序列化成表单；原生桥只接受字符串，
-  // 不处理的话 POST 会发出 "[object Object]"，音源就整体拿不到数据。
-  const rawBody = options.body ?? options.data ?? null
-  let body = rawBody
-  let headers = options.headers || {}
-  if (rawBody != null && typeof rawBody !== 'string') {
-    body = new URLSearchParams(rawBody).toString()
-    const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
-    if (!hasContentType) {
-      headers = { ...headers, 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8' }
-    }
+  // 照搬洛雪移动版：POST 且未显式给出类型时，对象体一律按 JSON 发送；
+  // 只有明确传 form 的调用才编成表单。原生桥只接受字符串，必须在这里序列化。
+  let headers = { Accept: 'application/json', ...(options.headers || {}) }
+  const headerName = (name) =>
+    Object.keys(headers).find((key) => key.toLowerCase() === name.toLowerCase())
+  const contentType = () => {
+    const key = headerName('content-type')
+    return key ? String(headers[key]).toLowerCase() : ''
+  }
+  let body = options.body ?? options.data ?? null
+  const method = (options.method || 'get').toUpperCase()
+  if (options.form && typeof options.form === 'object') {
+    if (!headerName('content-type')) headers['content-type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
+    body = new URLSearchParams(options.form).toString()
+  } else if (method === 'POST' && !headerName('content-type') && body != null) {
+    headers['content-type'] = 'application/json'
+  }
+  if (body != null && typeof body !== 'string') {
+    if (contentType().includes('application/json')) body = JSON.stringify(body)
+    else body = new URLSearchParams(body).toString()
   }
   obj.promise = httpRequest({
     url,
