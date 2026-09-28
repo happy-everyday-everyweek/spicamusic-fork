@@ -118,7 +118,7 @@ private enum class Judge(val score: Int, val vibrationMs: Long, val vibrationAmp
   Miss(0, 34L, 255),
 }
 
-private const val HIT_TOLERANCE = 0.16f
+private const val HIT_TOLERANCE = 0.22f
 private const val FALL_WINDOW_MS = 1800f
 private const val PERFECT_WINDOW_MS = 90f
 private const val GREAT_WINDOW_MS = 200f
@@ -299,7 +299,7 @@ private fun RhythmPlay(
             // 自由落点：按触点的横向位置就近取音符；判定窗口从头判前 200ms 一直开到长条尾部之后。
             val xFrac = (down.position.x / size.width).coerceIn(0f, 1f)
             val lineY = size.height * 0.82f
-            val noteW = (size.width * 0.08f).coerceIn(20f, 64f)
+            val noteW = (size.width * 0.13f).coerceIn(36f, 110f)
             val candidate =
               notes.indices
                 .filter { !consumed[it] && abs(notes[it].lane - xFrac) <= HIT_TOLERANCE }
@@ -344,7 +344,7 @@ private fun RhythmPlay(
   ) {
     Canvas(modifier = Modifier.fillMaxSize()) {
       val judgeLineY = size.height * 0.82f
-      val noteWidth = (size.width * 0.08f).coerceIn(20f, 64f)
+      val noteWidth = (size.width * 0.13f).coerceIn(36f, 110f)
       val noteX = { pos: Float -> pos * (size.width - noteWidth) }
       if (flashAlpha > 0f && flashX >= 0f) {
         val cx = flashX * size.width
@@ -378,7 +378,9 @@ private fun RhythmPlay(
         size = Size(size.width, 4f),
       )
       notes.forEachIndexed { index, note ->
-        if (consumed[index]) return@forEachIndexed
+        val tailMs = note.timeMs + note.durationMs
+        // 已判定的长条继续画到尾部过去，保持“按住”的观感；其它已消耗音符立即消失。
+        if (consumed[index] && (note.durationMs <= 0L || positionMs > tailMs)) return@forEachIndexed
         val headDelta = note.timeMs - positionMs
         val headY = judgeLineY - headDelta / FALL_WINDOW_MS * judgeLineY
         val laneX = noteX(note.lane)
@@ -388,7 +390,7 @@ private fun RhythmPlay(
           val bottom = maxOf(headY, tailY) + 13f
           if (bottom > -80f) {
             drawRoundRect(
-              color = noteColor.copy(alpha = 0.45f),
+              color = if (consumed[index]) accentColor.copy(alpha = 0.5f) else noteColor.copy(alpha = 0.5f),
               topLeft = Offset(laneX, top),
               size = Size(noteWidth, bottom - top),
               cornerRadius = CornerRadius(16f, 16f),

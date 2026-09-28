@@ -120,16 +120,19 @@ object TarsosChartAnalyzer {
       index++
     }
 
-    // 长条：与下一个音符的间隔超过一拍半时，这一段视为持续音。
-    if (beatMs > 0L && notes.size > 1) {
+    // 长条：与下一个音符的间隔明显超过一拍时，这一段视为持续音；节拍缺失时用
+    // 起音间隔中位数兜底估计拍长（仍来自真实检测数据）。最后一个音符不长按。
+    val effectiveBeatMs = if (beatMs > 0L) beatMs else estimateBeatMs(notes)
+    if (effectiveBeatMs > 0L && notes.size > 1) {
       val result = ArrayList<RhythmNote>(notes.size)
+      val minHoldMs = (effectiveBeatMs * 3 / 4).coerceAtLeast(420L)
       for (i in notes.indices) {
         val note = notes[i]
-        val nextGapMs = if (i + 1 < notes.size) notes[i + 1].timeMs - note.timeMs else Long.MAX_VALUE
-        val holdMs = nextGapMs - beatMs / 2
+        val nextGapMs = if (i + 1 < notes.size) notes[i + 1].timeMs - note.timeMs else 0L
+        val holdMs = nextGapMs - effectiveBeatMs / 2
         result +=
-          if (holdMs >= beatMs + beatMs / 2) {
-            note.copy(durationMs = holdMs.coerceIn(beatMs, HOLD_CAP_MS))
+          if (nextGapMs >= effectiveBeatMs + effectiveBeatMs / 4 && holdMs >= minHoldMs) {
+            note.copy(durationMs = holdMs.coerceIn(minHoldMs, HOLD_CAP_MS))
           } else {
             note
           }
@@ -148,7 +151,21 @@ object TarsosChartAnalyzer {
     }
     if (intervals.isEmpty()) return 0L
     intervals.sort()
-    return intervals[intervals.size / 2]
+    val median = intervals[intervals.size / 2]
+    return if (median in 150L..2000L) median else 0L
+  }
+
+  /** 节拍缺失时的拍长估计：取音符间隔中位数，仍来自真实起音数据。 */
+  private fun estimateBeatMs(notes: List<RhythmNote>): Long {
+    if (notes.size < 3) return 0L
+    val gaps = ArrayList<Long>(notes.size - 1)
+    for (i in 1 until notes.size) {
+      val gap = notes[i].timeMs - notes[i - 1].timeMs
+      if (gap in 200L..1500L) gaps.add(gap)
+    }
+    if (gaps.size < 2) return 0L
+    gaps.sort()
+    return gaps[gaps.size / 2]
   }
 
   /** 自由落点：黄金分割在横向均匀铺开，没有固定轨道。 */
