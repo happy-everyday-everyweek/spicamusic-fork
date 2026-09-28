@@ -58,6 +58,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.spica27.spicamusic.common.entity.Song
 import me.spica27.spicamusic.feature.library.domain.SongUseCases
 import me.spica27.spicamusic.feature.library.domain.rhythm.RhythmChart
@@ -122,6 +123,9 @@ private const val HIT_TOLERANCE = 0.22f
 private const val FALL_WINDOW_MS = 1800f
 private const val PERFECT_WINDOW_MS = 90f
 private const val GREAT_WINDOW_MS = 200f
+
+/** 长条的提前判定窗口放宽到 500ms：长条击打点在头部，视觉上容易按早。 */
+private const val LONG_PRE_WINDOW_MS = 500L
 private const val MIN_GAP_MS = 110L
 private const val HOLD_MIN_MS = 420L
 
@@ -296,48 +300,65 @@ private fun RhythmPlay(
           if (finished || paused) return@pointerInput
           awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            // 自由落点：按触点的横向位置就近取音符；判定窗口从头判前 200ms 一直开到长条尾部之后。
+            // 自由落点：按触点的横向位置就近取音符；长条在整段持续期间都可命中，且按住会等窗口开启。
             val xFrac = (down.position.x / size.width).coerceIn(0f, 1f)
             val lineY = size.height * 0.82f
             val noteW = (size.width * 0.13f).coerceIn(36f, 110f)
-            val candidate =
+            var judged = false
+            fun judgeIfPossible(candidate: Int?) {
+              if (judged || candidate == null) return
+              judged = true
+              val note = notes[candidate]
+              val headDelta = abs(note.timeMs - positionMs).toFloat()
+              val judge = if (headDelta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
+              consumed[candidate] = true
+              when (judge) {
+                Judge.Perfect -> perfectCount += 1
+                Judge.Great -> greatCount += 1
+                Judge.Miss -> missCount += 1
+              }
+              combo += 1
+              bestCombo = maxOf(bestCombo, combo)
+              score += judge.score + combo * 2
+              val centerX = (note.lane * (size.width - noteW) + noteW / 2f) / size.width
+              flashX = centerX
+              flashY =
+                (lineY - (note.timeMs - positionMs).toFloat() / FALL_WINDOW_MS * lineY)
+                  .coerceIn(0f, lineY)
+              flashAlpha = 1f
+              vibrate(context, judge)
+            }
+            fun pickCandidate(): Int? =
               notes.indices
                 .filter { !consumed[it] && abs(notes[it].lane - xFrac) <= HIT_TOLERANCE }
                 .filter {
-                  positionMs >= notes[it].timeMs - GREAT_WINDOW_MS.toLong() &&
+                  val preWindow =
+                    if (notes[it].durationMs > 0L) LONG_PRE_WINDOW_MS else GREAT_WINDOW_MS.toLong()
+                  positionMs >= notes[it].timeMs - preWindow &&
                     positionMs <= notes[it].timeMs + notes[it].durationMs + GREAT_WINDOW_MS.toLong()
                 }
                 .minByOrNull { abs(notes[it].timeMs - positionMs) }
-            pressingIndex = candidate ?: -1
             // 按下立刻有反馈：触点处先亮一下，命中后光效移到音符本体上。
             flashX = xFrac
             flashY = down.position.y
             flashAlpha = 0.55f
-            val index = candidate
-            if (index == null) {
-              waitForUpOrCancellation()
-              pressingIndex = -1
-              return@awaitEachGesture
+            val candidateAtDown = pickCandidate()
+            pressingIndex = candidateAtDown ?: -1
+            judgeIfPossible(candidateAtDown)
+            // 按住不放：按下时窗口未开（长条常见）就持续重估，一旦进入窗口立即判中；松手再补一次。
+            var loops = 0
+            var stillDown = true
+            while (stillDown && loops < 1500) {
+              loops += 1
+              val event = withTimeoutOrNull(30L) { awaitPointerEvent() }
+              if (event == null) {
+                if (!judged) judgeIfPossible(pickCandidate())
+                continue
+              }
+              stillDown = event.changes.any { it.pressed }
+              if (!judged) judgeIfPossible(pickCandidate())
             }
-            // 点到就判：点一下或按住都算命中。
-            val note = notes[index]
-            val headDelta = abs(note.timeMs - positionMs).toFloat()
-            val judge = if (headDelta <= PERFECT_WINDOW_MS) Judge.Perfect else Judge.Great
-            consumed[index] = true
-            when (judge) {
-              Judge.Perfect -> perfectCount += 1
-              Judge.Great -> greatCount += 1
-              Judge.Miss -> missCount += 1
-            }
-            combo += 1
-            bestCombo = maxOf(bestCombo, combo)
-            score += judge.score + combo * 2
-            val centerX = (note.lane * (size.width - noteW) + noteW / 2f) / size.width
-            flashX = centerX
-            flashY = (lineY - (note.timeMs - positionMs).toFloat() / FALL_WINDOW_MS * lineY).coerceIn(0f, lineY)
-            flashAlpha = 1f
-            vibrate(context, judge)
-            waitForUpOrCancellation()
+            if (!judged) judgeIfPossible(pickCandidate())
             pressingIndex = -1
           }
         },
@@ -395,6 +416,15 @@ private fun RhythmPlay(
               size = Size(noteWidth, bottom - top),
               cornerRadius = CornerRadius(16f, 16f),
             )
+            // 头部亮块：长条的击打点在头部，给一个明确的时间参照。
+            if (!consumed[index] && headY > -80f) {
+              drawRoundRect(
+                color = noteColor.copy(alpha = 0.95f),
+                topLeft = Offset(laneX, headY - 13f),
+                size = Size(noteWidth, 26f),
+                cornerRadius = CornerRadius(16f, 16f),
+              )
+            }
           }
         } else if (headDelta <= FALL_WINDOW_MS && headY > -80f) {
           drawRoundRect(
